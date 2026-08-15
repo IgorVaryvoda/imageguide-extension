@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "ImageGuide — Image Auditor",
+  "version": "0.1.0",
+  "description": "Audit every image on a page. See format, weight, wasted pixels, and the saving from WebP or AVIF.",
+  "homepage_url": "https://www.imageguide.dev",
+  "minimum_chrome_version": "116",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "optional_host_permissions": ["*://*/*"],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Audit the images on this page",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

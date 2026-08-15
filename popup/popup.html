@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ImageGuide Auditor</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="header">
+      <h1>Image Auditor</h1>
+      <button id="rescan" class="ghost" type="button" title="Scan the page again">Rescan</button>
+    </header>
+
+    <section id="state-loading" class="state">
+      <div class="spinner" aria-hidden="true"></div>
+      <p>Reading the page…</p>
+    </section>
+
+    <section id="state-error" class="state" hidden>
+      <p id="error-message">This page cannot be audited.</p>
+      <p class="muted">Chrome blocks extensions on its own pages, the Web Store, and other extensions.</p>
+    </section>
+
+    <section id="state-empty" class="state" hidden>
+      <p>No images found on this page.</p>
+    </section>
+
+    <main id="results" hidden>
+      <section class="summary">
+        <div class="grade" id="grade">A</div>
+        <div class="summary-figures">
+          <p class="headline"><strong id="saving">0 kB</strong> to save</p>
+          <p class="muted">
+            <span id="count">0</span> images · <span id="total">0 kB</span> now ·
+            <span id="optimised">0 kB</span> after
+          </p>
+        </div>
+      </section>
+
+      <div class="bar" role="img" aria-label="Share of the image weight that is avoidable">
+        <div class="bar-fill" id="bar-fill"></div>
+      </div>
+
+      <p id="measure-note" class="note" hidden>
+        <span id="estimated-count">0</span> sizes are estimates. Cross-origin files hide their size.
+        <button id="measure" class="link" type="button">Measure the real sizes</button>
+      </p>
+
+      <nav class="filters" id="filters"></nav>
+
+      <ul class="images" id="images"></ul>
+
+      <footer class="footer">
+        <a href="https://www.imageguide.dev" target="_blank" rel="noreferrer">imageguide.dev</a>
+        <button id="copy" class="ghost" type="button">Copy report</button>
+      </footer>
+    </main>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
