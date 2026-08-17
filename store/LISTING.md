@@ -132,6 +132,18 @@ The extension stores two values: the issue filter and the sort order the user la
 This permission is optional and is never requested at install time. A cross-origin image hides its transfer size unless the server sends a Timing-Allow-Origin header. When the user presses "Measure the real sizes", the extension requests access only to the specific origins that serve those images, then reads the Content-Length header of each one. The user can decline, and the extension continues with estimates.
 ```
 
+### Remote code use
+
+Select **No, I am not using remote code**. Then paste this justification:
+
+```
+The extension uses no remote code. Every line it runs ships inside the package: two injected functions in content/, the scoring rules in lib/, and the popup in popup/. There is no eval, no new Function, no string-to-code execution, and no script loaded from any URL. The extension has no background service worker and declares no content_security_policy override.
+
+chrome.scripting.executeScript is called with a `func` reference to a function defined in the package, never with a `files` entry pointing outside it and never with injected source text. Chrome serialises that local function and runs a copy in the page.
+
+The only remote data the extension touches is image bytes: thumbnails in the popup load from the same image addresses the page already used, and the optional size check reads response headers. Neither is executed as code.
+```
+
 ### Data usage
 
 Tick **nothing**. Then certify all three statements:
