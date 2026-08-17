@@ -1,5 +1,7 @@
 # ImageGuide — Image Auditor
 
+![ImageGuide Image Auditor](store/promo-small-440x280.png)
+
 A Chrome extension that audits every image on the open page. It shows the format, the real
 weight, the wasted pixels, and the saving you get from WebP or AVIF.
 
@@ -111,7 +113,10 @@ content/highlight.js   Runs in the page, scrolls to and outlines one image
 popup/                 The whole user interface
 test/                  Unit tests, plus a small DOM stub for the collector
 scripts/verify.mjs     Static checks Chrome only reports at run time
-scripts/               Icon drawing and Web Store packaging
+scripts/               Asset building and Web Store packaging
+images/                Master art, at the size it was drawn
+icons/                 The extension icons, built from images/icon-master.png
+store/                 Web Store and social art, at the exact sizes each needs
 ```
 
 `lib/` holds no extension API calls, and the injected collectors hold none either, so the
@@ -143,7 +148,29 @@ project keeps no dependencies.
 npm run zip
 ```
 
-It writes `dist/imageguide-extension-<version>.zip`, ready for the Chrome Web Store.
+It writes `dist/imageguide-extension-<version>.zip`, ready for the Chrome Web Store. The
+zip holds the manifest, the icons, and the three code directories. It holds no art.
+
+## Art
+
+```bash
+npm run assets
+```
+
+It reads the masters in `images/` and writes every derived size:
+
+| Output | Size | Use |
+| --- | --- | --- |
+| `icons/icon16.png` | 16×16 | The toolbar |
+| `icons/icon48.png` | 48×48 | The extensions page |
+| `icons/icon128.png` | 128×128 | The manifest and the store icon |
+| `store/promo-small-440x280.png` | 440×280 | The Web Store listing tile |
+| `store/promo-marquee-1400x560.png` | 1400×560 | The Web Store marquee |
+| `store/social-card-1200x630.png` | 1200×630 | Link previews for imageguide.dev |
+| `store/card-*-800.png` | 800×800 | Feature cards for the README and the site |
+
+Edit a master in `images/`, run the script, and every size follows. The Web Store also
+wants a screenshot at 1280×800. Take that one from the real popup.
 
 ## Accuracy of the saving model
 
