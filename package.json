@@ -13,6 +13,7 @@
     "test": "node scripts/verify.mjs && node --test \"test/*.test.js\"",
     "verify": "node scripts/verify.mjs",
     "assets": "bash scripts/make-assets.sh",
+    "screenshots": "node scripts/make-store-screenshots.mjs",
     "zip": "bash scripts/build-zip.sh"
   }
 }

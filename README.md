@@ -167,10 +167,39 @@ It reads the masters in `images/` and writes every derived size:
 | `store/promo-small-440x280.png` | 440×280 | The Web Store listing tile |
 | `store/promo-marquee-1400x560.png` | 1400×560 | The Web Store marquee |
 | `store/social-card-1200x630.png` | 1200×630 | Link previews for imageguide.dev |
-| `store/card-*-800.png` | 800×800 | Feature cards for the README and the site |
 
-Edit a master in `images/`, run the script, and every size follows. The Web Store also
-wants a screenshot at 1280×800. Take that one from the real popup.
+Edit a master in `images/`, run the script, and every size follows.
+
+## Store screenshots
+
+```bash
+npm run screenshots
+```
+
+It reads the popup captures in `images/screens/` and frames each one on the 1280×800
+canvas the Web Store asks for. The captures are the real extension, running against a real
+page. Nothing in them is drawn or mocked.
+
+To take a fresh set of captures:
+
+1. Copy the extension to a scratch directory and add `"host_permissions": ["*://*/*"]` to
+   the copy. The popup needs that to run as a background tab. The interface is the same
+   either way.
+2. Start Chromium with the copy and a debugging port:
+   ```bash
+   chromium --user-data-dir=/tmp/ig-profile --load-extension=/tmp/ig-ext \
+            --remote-debugging-port=9222 --no-first-run
+   ```
+3. Open an image-heavy page in the first tab.
+4. Open `chrome-extension://<id>/popup/popup.html` in a second tab, put the first tab in
+   front, then reload the popup from inside it. The popup then audits the page tab, as it
+   does in use.
+5. Set the popup viewport to 436×600 at a device pixel ratio of 2, and capture with
+   `Page.captureScreenshot`.
+6. Save the five states to `images/screens/` as `01-summary.png` through `05-actions.png`,
+   then run `npm run screenshots`.
+
+The captions live at the top of `scripts/make-store-screenshots.mjs`.
 
 ## Accuracy of the saving model
 
