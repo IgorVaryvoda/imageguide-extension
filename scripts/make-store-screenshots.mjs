@@ -136,7 +136,10 @@ for (const screen of SCREENS) {
     // The real popup.
     card, '-geometry', `+${popupX}+${popupY}`, '-compose', 'over', '-composite',
 
-    '-depth', '8', '-strip', output
+    // The store takes a 24-bit PNG with no alpha. The shadow layer leaves an
+    // alpha channel behind, so flatten it onto the canvas colour and drop it.
+    '-background', BACKGROUND, '-alpha', 'remove', '-alpha', 'off',
+    '-depth', '8', '-strip', 'PNG24:' + output
   ]);
 
   rmSync(card, { force: true });
