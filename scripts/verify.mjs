@@ -9,11 +9,13 @@
  * 2. A function that Chrome injects with `scripting.executeScript({func})` must
  *    not read a module-scope name. Chrome serialises the function alone, so a
  *    free identifier becomes a ReferenceError inside the page.
+ * 3. Every relative import resolves, with a file extension.
+ * 4. The manifest permissions and the code agree, in both directions.
  *
  * Run: npm run verify
  */
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -98,11 +100,66 @@ function checkInjectedFunction(filePath, exportName) {
   }
 }
 
+/**
+ * Every relative import must resolve.
+ * Chrome reports a bad specifier only when the popup opens.
+ *
+ * @param {string[]} filePaths
+ */
+function checkImports(filePaths) {
+  for (const filePath of filePaths) {
+    const source = readFileSync(join(root, filePath), 'utf8');
+    const base = dirname(join(root, filePath));
+
+    for (const match of source.matchAll(/\bfrom\s+['"](\.[^'"]+)['"]/g)) {
+      const target = resolve(base, match[1]);
+      if (!existsSync(target)) {
+        fail(`${filePath} imports a missing module: ${match[1]}`);
+      } else if (!/\.[a-z]+$/.test(match[1])) {
+        fail(`${filePath} imports ${match[1]} without a file extension. Chrome needs one.`);
+      }
+    }
+  }
+}
+
+/** List every JavaScript file the extension ships. */
+function shippedScripts() {
+  const found = [];
+  const walk = (directory) => {
+    for (const entry of readdirSync(join(root, directory), { withFileTypes: true })) {
+      const next = `${directory}/${entry.name}`;
+      if (entry.isDirectory()) walk(next);
+      else if (entry.name.endsWith('.js')) found.push(next);
+    }
+  };
+  for (const directory of ['lib', 'content', 'popup']) walk(directory);
+  return found;
+}
+
 const manifest = checkManifest();
 
 checkHtml('popup/popup.html');
+checkImports(shippedScripts());
 checkInjectedFunction('content/collect.js', 'collectImages');
 checkInjectedFunction('content/highlight.js', 'highlightImage');
+
+// The manifest must ask for every permission the popup calls.
+const popupSource = readFileSync(join(root, 'popup/popup.js'), 'utf8');
+for (const [api, permission] of [
+  ['chrome.storage.', 'storage'],
+  ['chrome.scripting.', 'scripting'],
+  ['chrome.tabs.', 'activeTab']
+]) {
+  if (popupSource.includes(api) && !manifest.permissions.includes(permission)) {
+    fail(`popup/popup.js calls ${api} but the manifest omits the "${permission}" permission.`);
+  }
+}
+for (const permission of manifest.permissions) {
+  const api = permission === 'activeTab' ? 'chrome.tabs.' : `chrome.${permission}.`;
+  if (!popupSource.includes(api)) {
+    fail(`The manifest asks for "${permission}" but no code uses it. Drop it or use it.`);
+  }
+}
 
 if (problems.length) {
   console.error(`✖ ${problems.length} problem(s):`);

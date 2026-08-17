@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { analyzeImage, analyzePage, gradeFor, HEAVY_IMAGE_BYTES } from '../lib/analyze.js';
+import {
+  analyzeImage,
+  analyzePage,
+  formatOf,
+  gradeFor,
+  HEAVY_IMAGE_BYTES
+} from '../lib/analyze.js';
 import { estimateBytes, formatFromContentType, formatFromUrl, humanBytes } from '../lib/format.js';
 
 const baseImage = {
@@ -18,6 +24,10 @@ const baseImage = {
   hasAlt: true,
   hasDimensions: true,
   hasSrcset: true,
+  hasSizes: true,
+  usesWidthDescriptors: false,
+  usesFallback: false,
+  contentType: '',
   occurrences: 1
 };
 
@@ -65,6 +75,22 @@ describe('estimateBytes', () => {
 
   it('returns zero without dimensions', () => {
     assert.equal(estimateBytes(0, 500, 'jpeg'), 0);
+  });
+
+  it('gives an SVG a flat size, because its weight is not pixels', () => {
+    assert.equal(estimateBytes(64, 64, 'svg'), estimateBytes(4000, 4000, 'svg'));
+    assert.ok(estimateBytes(0, 0, 'svg') > 0);
+  });
+});
+
+describe('formatOf', () => {
+  it('lets the Content-Type header beat the file name', () => {
+    const image = { url: 'https://cdn.test/photo.jpg', contentType: 'image/avif' };
+    assert.equal(formatOf(image), 'avif');
+  });
+
+  it('falls back to the URL when no header is known', () => {
+    assert.equal(formatOf({ url: 'https://cdn.test/photo.jpg', contentType: '' }), 'jpeg');
   });
 });
 
@@ -134,6 +160,46 @@ describe('analyzeImage', () => {
     assert.ok(result.bytes > 0);
   });
 
+  it('flags a srcset that uses width descriptors without a sizes attribute', () => {
+    const missing = analyzeImage({ ...baseImage, usesWidthDescriptors: true, hasSizes: false });
+    assert.ok(missing.issues.includes('noSizes'));
+
+    const present = analyzeImage({ ...baseImage, usesWidthDescriptors: true, hasSizes: true });
+    assert.ok(!present.issues.includes('noSizes'));
+  });
+
+  it('flags a picture whose sources never matched', () => {
+    const result = analyzeImage({ ...baseImage, usesFallback: true });
+    assert.ok(result.issues.includes('unusedSources'));
+  });
+
+  it('never calls a vector oversized, and never resizes it', () => {
+    const result = analyzeImage({
+      ...baseImage,
+      url: 'https://example.com/logo.svg',
+      naturalWidth: 2000,
+      naturalHeight: 1500,
+      displayWidth: 40,
+      displayHeight: 30,
+      transferBytes: 3000
+    });
+    assert.ok(!result.issues.includes('oversized'));
+    assert.equal(result.savingBytes, 0);
+  });
+
+  it('splits the saving between the resize and the format', () => {
+    const result = analyzeImage(baseImage);
+    assert.ok(result.resizeSaving > 0, 'a 4x oversized image saves on the resize');
+    assert.ok(result.formatSaving > 0, 'a JPEG still saves on the format');
+    assert.equal(result.resizeSaving + result.formatSaving, result.savingBytes);
+  });
+
+  it('charges no resize saving to an image that already fits', () => {
+    const result = analyzeImage({ ...baseImage, naturalWidth: 500, naturalHeight: 375 });
+    assert.equal(result.resizeSaving, 0);
+    assert.equal(result.formatSaving, result.savingBytes);
+  });
+
   it('calls a file heavy exactly at the threshold', () => {
     const result = analyzeImage({
       ...baseImage,
@@ -157,7 +223,29 @@ describe('analyzePage', () => {
     assert.equal(report.summary.totalBytes, 900 * 1024 + 3000);
     assert.ok(report.summary.savingRatio > 0.5);
     assert.equal(report.summary.grade, 'F');
-    assert.equal(report.summary.issueCounts.oversized, 1);
+    assert.equal(report.summary.issueStats.oversized.count, 1);
+  });
+
+  it('counts the avoidable weight behind each weight issue', () => {
+    const report = analyzePage([{ ...baseImage }]);
+    const { issueStats, savingBytes } = report.summary;
+
+    assert.equal(issueStats.oversized.savingBytes, savingBytes);
+    assert.equal(issueStats.legacyFormat.savingBytes, savingBytes);
+    // A markup issue costs no bytes, so it carries no saving.
+    assert.equal(issueStats.noSrcset, undefined);
+  });
+
+  it('gives a markup issue a count but no saving', () => {
+    const report = analyzePage([{ ...baseImage, hasAlt: false }]);
+    assert.equal(report.summary.issueStats.noAlt.count, 1);
+    assert.equal(report.summary.issueStats.noAlt.savingBytes, 0);
+  });
+
+  it('totals the saving split across the page', () => {
+    const report = analyzePage([{ ...baseImage }, { ...baseImage, url: 'https://example.com/b.jpg' }]);
+    const { resizeSaving, formatSaving, savingBytes } = report.summary;
+    assert.equal(resizeSaving + formatSaving, savingBytes);
   });
 
   it('handles an empty page', () => {
@@ -165,6 +253,7 @@ describe('analyzePage', () => {
     assert.equal(report.summary.count, 0);
     assert.equal(report.summary.savingRatio, 0);
     assert.equal(report.summary.grade, 'A');
+    assert.deepEqual(report.summary.issueStats, {});
   });
 });
 

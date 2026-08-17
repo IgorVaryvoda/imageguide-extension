@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ImageGuide — Image Auditor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Audit every image on a page. See format, weight, wasted pixels, and the saving from WebP or AVIF.",
   "homepage_url": "https://www.imageguide.dev",
   "minimum_chrome_version": "116",

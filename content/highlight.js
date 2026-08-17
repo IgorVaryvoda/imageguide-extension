@@ -2,12 +2,27 @@
  * Scroll to an image in the page and outline it for a moment.
  *
  * Like `collectImages`, Chrome serialises this function, so it must stay
- * self-contained.
+ * self-contained. The collector marks each element it records, so the lookup
+ * is exact. The URL search stays as a fallback for a page that changed since
+ * the scan.
  */
 
-export function highlightImage(url) {
+export function highlightImage(markAttribute, elementId, url) {
   const OUTLINE_ID = 'imageguide-auditor-outline';
   const DURATION_MS = 2600;
+
+  // Search the light DOM and every open shadow root.
+  const findIn = (root, selector) => {
+    const direct = root.querySelector(selector);
+    if (direct) return direct;
+    for (const element of root.querySelectorAll('*')) {
+      if (element.shadowRoot) {
+        const nested = findIn(element.shadowRoot, selector);
+        if (nested) return nested;
+      }
+    }
+    return null;
+  };
 
   const matches = (candidate) => {
     if (!candidate) return false;
@@ -18,12 +33,14 @@ export function highlightImage(url) {
     }
   };
 
-  let target = null;
+  let target = findIn(document, `[${markAttribute}="${CSS.escape(elementId)}"]`);
 
-  for (const element of document.images) {
-    if (matches(element.currentSrc || element.src)) {
-      target = element;
-      break;
+  if (!target) {
+    for (const element of document.images) {
+      if (matches(element.currentSrc || element.src)) {
+        target = element;
+        break;
+      }
     }
   }
 
@@ -36,31 +53,16 @@ export function highlightImage(url) {
     }
   }
 
-  if (!target) {
-    for (const element of document.querySelectorAll('*')) {
-      const background = getComputedStyle(element).backgroundImage;
-      if (background && background.includes('url(') && background.includes(url.split('/').pop())) {
-        target = element;
-        break;
-      }
-    }
-  }
-
   if (!target) return false;
 
   target.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
   document.getElementById(OUTLINE_ID)?.remove();
 
-  const rect = target.getBoundingClientRect();
   const outline = document.createElement('div');
   outline.id = OUTLINE_ID;
   outline.style.cssText = [
-    'position:absolute',
-    `top:${rect.top + window.scrollY - 3}px`,
-    `left:${rect.left + window.scrollX - 3}px`,
-    `width:${rect.width + 6}px`,
-    `height:${rect.height + 6}px`,
+    'position:fixed',
     'border:3px solid #3b82f6',
     'border-radius:6px',
     'box-shadow:0 0 0 9999px rgba(15,23,42,.35)',
@@ -68,9 +70,23 @@ export function highlightImage(url) {
     'z-index:2147483647',
     'transition:opacity .3s ease'
   ].join(';');
-
   document.body.appendChild(outline);
+
+  // A smooth scroll moves the box for a few frames, and a fixed or sticky
+  // element never stops moving. Track the box until the outline fades.
+  const place = () => {
+    const rect = target.getBoundingClientRect();
+    outline.style.top = `${rect.top - 3}px`;
+    outline.style.left = `${rect.left - 3}px`;
+    outline.style.width = `${rect.width + 6}px`;
+    outline.style.height = `${rect.height + 6}px`;
+  };
+
+  place();
+  const timer = setInterval(place, 100);
+
   setTimeout(() => {
+    clearInterval(timer);
     outline.style.opacity = '0';
     setTimeout(() => outline.remove(), 320);
   }, DURATION_MS);

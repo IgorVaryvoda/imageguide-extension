@@ -41,18 +41,55 @@
         <div class="bar-fill" id="bar-fill"></div>
       </div>
 
+      <p class="split" id="split">
+        Resize saves <strong id="resize-saving">0 kB</strong> ·
+        Modern format saves <strong id="format-saving">0 kB</strong>
+      </p>
+
       <p id="measure-note" class="note" hidden>
         <span id="estimated-count">0</span> sizes are estimates. Cross-origin files hide their size.
         <button id="measure" class="link" type="button">Measure the real sizes</button>
       </p>
 
+      <p id="truncate-note" class="note warn-note" hidden>
+        The page is very large, so the scan stopped early. The totals are a lower bound.
+      </p>
+
+      <p id="buffer-note" class="note warn-note" hidden>
+        The page loaded more resources than Chrome keeps timings for, so more sizes are estimates.
+        Reload the page for a full measurement.
+      </p>
+
       <nav class="filters" id="filters"></nav>
+
+      <div class="controls">
+        <input
+          id="search"
+          class="search"
+          type="search"
+          placeholder="Filter by file name or URL"
+          aria-label="Filter by file name or URL"
+          autocomplete="off"
+        />
+        <label class="sort-label" for="sort">Sort</label>
+        <select id="sort" class="sort">
+          <option value="saving">Saving</option>
+          <option value="bytes">Size</option>
+          <option value="wasted">Wasted pixels</option>
+          <option value="name">Name</option>
+        </select>
+      </div>
 
       <ul class="images" id="images"></ul>
 
+      <p id="list-note" class="note" hidden></p>
+
       <footer class="footer">
         <a href="https://www.imageguide.dev" target="_blank" rel="noreferrer">imageguide.dev</a>
-        <button id="copy" class="ghost" type="button">Copy report</button>
+        <span class="footer-actions">
+          <button id="copy-json" class="ghost" type="button" title="Copy the report as JSON">JSON</button>
+          <button id="copy" class="ghost" type="button">Copy report</button>
+        </span>
       </footer>
     </main>
 
