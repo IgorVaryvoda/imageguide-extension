@@ -304,7 +304,9 @@ function imageRow(image) {
     const convert = document.createElement('a');
     convert.className = 'icon';
     convert.textContent = 'Convert';
-    convert.title = `Open this image in the ImageGuide converter as ${image.recommendedFormat.toUpperCase()}`;
+    // The converter runs in the browser, so it takes a file, not a URL. The
+    // parameters ride along for the day it can fetch one itself.
+    convert.title = `Open the ImageGuide converter. Send this one to ${image.recommendedFormat.toUpperCase()}.`;
     convert.href = `${CONVERTER_URL}?url=${encodeURIComponent(image.url)}&to=${image.recommendedFormat}`;
     convert.target = '_blank';
     convert.rel = 'noreferrer';
