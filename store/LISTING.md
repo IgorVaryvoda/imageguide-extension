@@ -25,7 +25,7 @@ Audit every image on a page. See format, weight, wasted pixels, and the saving f
 
 ### Detailed description
 
-Also in `store/description.txt`, ready to select all and paste.
+Also in `store/description.md`, ready to select all and paste.
 
 ```
 ImageGuide audits every image on the page you are looking at, and tells you what each one costs.
