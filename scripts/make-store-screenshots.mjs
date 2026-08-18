@@ -52,7 +52,7 @@ const SCREENS = [
     file: '03-filter.png',
     out: 'screenshot-3-filter.png',
     headline: 'Filter to the\nproblem you have',
-    subline: 'Oversized, legacy format, heavy, lazy hero,\nno alt text, no srcset, no sizes, and more.',
+    subline: 'Ten checks run against every image. Show only\nthe ones that failed a check you care about.',
     note: 'Each chip carries the avoidable weight behind it.'
   },
   {

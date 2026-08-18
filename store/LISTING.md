@@ -40,7 +40,7 @@ WHAT IT MEASURES
 WHAT IT FLAGS
 
 • Oversized — the source is far larger than the box that shows it.
-• Legacy format — JPEG, PNG, GIF, or BMP, where AVIF or WebP is smaller.
+• Legacy format — the file uses an older encoding, and a newer one would send the same picture in fewer bytes.
 • Heavy — one file is a large part of the page weight.
 • No lazy loading — the image starts below the fold and still loads at once.
 • Lazy hero — the image is visible at load, so loading="lazy" delays the LCP.
