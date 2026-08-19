@@ -2,6 +2,8 @@
 
 ![ImageGuide Image Auditor](store/promo-small-440x280.png)
 
+**[Add to Chrome](https://chromewebstore.google.com/detail/hinifcidioledficgenmdncpkifnngap)** — free on the Chrome Web Store.
+
 A Chrome extension that audits every image on the open page. It shows the format, the real
 weight, the wasted pixels, and the saving you get from WebP or AVIF.
 
@@ -61,7 +63,10 @@ then a lower bound.
 
 The popup remembers the filter and the sort between sessions.
 
-## Install for development
+## Install from source
+
+The store version and this repository are the same code. Load it yourself to
+develop, or to read every line first.
 
 1. Open `chrome://extensions`.
 2. Turn on **Developer mode**.
