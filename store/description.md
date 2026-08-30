@@ -1,46 +1,51 @@
-ImageGuide audits every image on the page you are looking at, and tells you what each one costs.
+ImageGuide inspects common image resources on the page you are viewing and ranks the delivery work worth investigating.
 
-Click the icon. In under a second you get a letter grade from A to F, the total image weight, and the weight you could avoid.
+Click the icon to see three separate results:
 
-WHAT IT MEASURES
+• Delivery efficiency — a grade based only on resources whose size the browser reported or you checked.
+• Markup findings — cautious checks for missing alt attributes, missing dimensions, current viewport loading state, and responsive-image opportunities.
+• Confidence — the share of modelled image weight backed by measured resource sizes.
 
-• The format, read from the Content-Type header, the CDN parameter, or the file extension.
-• The transfer size, taken from the browser's own Resource Timing record. Not a guess.
-• The natural size against the box that shows it, so you see the wasted pixels.
-• The size after a resize and a conversion to a modern format, split into the two savings so you know which one to chase.
+WHAT IT REPORTS
+
+• Source format from Content-Type, a CDN parameter, or the file extension.
+• Resource Timing encoded-body or transfer size, with provenance in JSON.
+• Optional validated Content-Length or Content-Range response sizes.
+• Raw source pixels for plain images and exactly matched w/x candidates. Uncertain matches remain unknown.
+• Estimated resize and format opportunities. These are models, not promised final weights.
 
 WHAT IT FLAGS
 
-• Oversized — the source is far larger than the box that shows it.
-• Legacy format — the file uses an older encoding, and a newer one would send the same picture in fewer bytes.
-• Heavy — one file is a large part of the page weight.
-• No lazy loading — the image starts below the fold and still loads at once.
-• Lazy hero — the image is visible at load, so loading="lazy" delays the LCP.
-• No dimensions — no width and height and no CSS aspect-ratio, so the layout shifts.
-• No alt text — screen readers and search engines cannot read it.
-• No srcset — one file goes to every screen size.
-• No sizes — the srcset uses width descriptors, so the browser assumes the full viewport width.
-• Unused sources — a picture element fell back to its img, so no source ever matched.
+• Oversized — known source pixels substantially exceed the rendered need.
+• Legacy format — JPEG, PNG, GIF, BMP, or ICO may benefit from a newer format.
+• AVIF opportunity — WebP is modern already, but AVIF may reduce it further.
+• Heavy — one resource is at least 400 kB.
+• Eager image offscreen now — the image is outside the viewport at scan time and is not lazy.
+• Lazy image visible now — the image is inside the viewport at scan time and is lazy. This is not an LCP test.
+• Lazy-loaded LCP image — the browser identified this usage as LCP, and it is marked lazy.
+• Layout-shift source — the browser attributed a shift to this element; the shifted node is not necessarily the cause.
+• No dimensions — no width and height attributes and no CSS aspect-ratio.
+• Missing alt attribute — alt="" remains valid for decorative images.
+• Responsive-image opportunity — a confirmed oversized raster has no srcset.
+• Default sizes mismatch — a width-descriptor srcset omits sizes while its slot is notably narrower than the viewport.
 
 WHAT IT SCANS
 
-Every img, including the file that picture resolved to. Every CSS background image. Every video poster. Every open shadow root. Every frame it can reach.
+ImageGuide scans img elements and selected picture/srcset candidates; computed CSS backgrounds, masks, borders, content URLs, image-set candidates, and pseudo-elements; video posters; SVG image elements; open shadow roots; and reachable frames. A persistent full-audit tab watches relevant DOM changes and refreshes the evidence. Canvas elements are counted and disclosed, but canvas/WebGL pixels cannot be mapped back to source requests. Closed shadow roots, inaccessible frames, and uncertain typed image-set selections remain unknown. Repeated URLs share one resource row, with every recorded element usage and its markup findings grouped underneath. Element, resource, usage, URL-length, scan-time, and 4 MB serialized-payload limits keep hostile or unusually large pages bounded; the interface warns when totals are incomplete.
 
 HOW YOU USE IT
 
-Filter to one problem. Search a file name or URL. Sort by saving, size, wasted pixels, or name. Click a name to scroll to that image in the page and outline it. Copy an image URL, or open it in the ImageGuide converter. Copy the whole audit as Markdown for a pull request, or as JSON for a build step.
-
-The popup remembers your filter and sort.
+Use the popup for an instant summary, or open the persistent full audit for grouped usage evidence, buffered LCP and CLS facts, live page watching, and more room to investigate. Filter to one finding. Search a file name or URL. Sort by opportunity, response size, resize opportunity, or name. Click a resource or grouped usage to scroll to that element in the page. Copy an image URL, open the ImageGuide converter without sending that URL, or copy the audit as escaped Markdown or versioned JSON.
 
 ABOUT THE NUMBERS
 
-The transfer size is a measurement, not an estimate, wherever the browser reports it. A cross-origin response only reveals its size when it sends a Timing-Allow-Origin header. Where that header is missing, ImageGuide estimates from the pixel count and the format, and labels the number "est." Press "Measure the real sizes" to replace those estimates with real Content-Length values. ImageGuide asks for access only to the origins that serve the unmeasured files, and only when you press the button.
+Resource Timing may expose encodedBodySize or transferSize; ImageGuide records which one it used. Cross-origin responses often hide both. In that case, ImageGuide labels a low-confidence model.
 
-The saving is a model, not a promise. It combines the pixels you can drop with a fixed compression ratio per format. Treat it as a ranked list of what to fix first.
+Press "Check response sizes" to request temporary access only to the relevant image origins. Each click checks at most 100 resources with up to six concurrent requests and an eight-second timeout. ImageGuide accepts only a successful image HEAD response or a validated 206 image range response, cancels response bodies, omits credentials, and removes permissions granted for that check. These response sizes may still differ from the page's original negotiated request.
 
 PRIVACY
 
-ImageGuide sends nothing anywhere. There is no server, no account, and no analytics. Every measurement stays in the popup and disappears when you close it. There is no background process.
+No audit report is automatically transmitted to ImageGuide, and the interface does not load remote thumbnails. Optional response-size checks make the requests described above. User-clicked links open ImageGuide pages, but the converter link does not contain the audited image URL. There is no account or analytics. Only the last filter and sort choice are stored locally.
 
 OPEN SOURCE
 

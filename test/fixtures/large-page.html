@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ImageGuide 8,000-element fixture</title>
+    <style>.tile { width: 2px; height: 2px; }</style>
+  </head>
+  <body>
+    <img src="/icons/icon48.png?large=1" width="48" height="48" alt="Fixture image" />
+    <div id="elements"></div>
+    <script>
+      const fragment = document.createDocumentFragment();
+      for (let index = 0; index < 8200; index += 1) {
+        const tile = document.createElement('span');
+        tile.className = 'tile';
+        fragment.append(tile);
+      }
+      document.getElementById('elements').append(fragment);
+      window.__fixtureReady = true;
+    </script>
+  </body>
+</html>

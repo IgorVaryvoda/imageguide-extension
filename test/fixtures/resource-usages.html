@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ImageGuide resource and usage fixture</title>
+    <style>
+      body { font-family: sans-serif; }
+      img { object-fit: cover; }
+      .background {
+        width: 180px;
+        height: 90px;
+        background: url("/icons/icon128.png") center / contain no-repeat;
+      }
+    </style>
+  </head>
+  <body>
+    <img
+      src="/icons/icon48.png"
+      srcset="/icons/icon128.png 128w"
+      sizes="64px"
+      width="64"
+      height="64"
+      alt="Responsive logo"
+    />
+    <img src="/icons/icon128.png" style="width: 48px; height: 48px" />
+    <div class="background" aria-label="Decorative background"></div>
+    <picture>
+      <source media="(min-width: 4000px)" srcset="/icons/icon128.png 128w" />
+      <img src="/icons/icon48.png" width="48" height="48" alt="" />
+    </picture>
+  </body>
+</html>

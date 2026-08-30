@@ -1,19 +1,27 @@
 {
   "name": "imageguide-extension",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "Chrome extension that audits every image on a page and shows the saving from a modern format.",
+  "description": "Chrome extension that inspects common web images and ranks estimated delivery opportunities.",
   "homepage": "https://www.imageguide.dev",
   "license": "MIT",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "test": "node scripts/verify.mjs && node --test \"test/*.test.js\"",
+    "lint": "eslint .",
+    "test": "node scripts/verify.mjs && npm run lint && node --test \"test/*.test.js\"",
+    "test:e2e": "node --test \"test/e2e/*.test.mjs\"",
     "verify": "node scripts/verify.mjs",
     "assets": "bash scripts/make-assets.sh",
     "screenshots": "node scripts/make-store-screenshots.mjs",
+    "prezip": "npm test && npm run test:e2e",
     "zip": "bash scripts/build-zip.sh"
+  },
+  "devDependencies": {
+    "eslint": "^10.9.1",
+    "globals": "^17.11.0",
+    "puppeteer": "^25.9.0"
   }
 }

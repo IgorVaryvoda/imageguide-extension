@@ -16,6 +16,7 @@
  */
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -83,11 +84,12 @@ function checkInjectedFunction(filePath, exportName) {
     (match) => match[1]
   );
 
-  const start = source.indexOf(`export function ${exportName}`);
-  if (start === -1) {
+  const declaration = new RegExp(`export\\s+(?:async\\s+)?function\\s+${exportName}\\b`).exec(source);
+  if (!declaration) {
     fail(`${filePath} does not export ${exportName}.`);
     return;
   }
+  const start = declaration.index;
   const body = source.slice(start);
 
   for (const name of [...imported, ...moduleConstants]) {
@@ -122,6 +124,17 @@ function checkImports(filePaths) {
   }
 }
 
+/** Let Node parse every shipped module before Chrome sees it. */
+function checkSyntax(filePaths) {
+  for (const filePath of filePaths) {
+    try {
+      execFileSync(process.execPath, ['--check', join(root, filePath)], { stdio: 'pipe' });
+    } catch {
+      fail(`${filePath} contains invalid JavaScript.`);
+    }
+  }
+}
+
 /** List every JavaScript file the extension ships. */
 function shippedScripts() {
   const found = [];
@@ -132,31 +145,48 @@ function shippedScripts() {
       else if (entry.name.endsWith('.js')) found.push(next);
     }
   };
-  for (const directory of ['lib', 'content', 'popup']) walk(directory);
+  for (const directory of ['lib', 'content', 'extension', 'popup', 'audit']) walk(directory);
   return found;
 }
 
 const manifest = checkManifest();
+const packageJson = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+
+if (packageJson.version !== manifest.version) {
+  fail(
+    `package.json is ${packageJson.version}, but manifest.json is ${manifest.version}. ` +
+      'Release versions must match.'
+  );
+}
 
 checkHtml('popup/popup.html');
-checkImports(shippedScripts());
+checkHtml('audit/audit.html');
+const scripts = shippedScripts();
+checkImports(scripts);
+checkSyntax(scripts);
 checkInjectedFunction('content/collect.js', 'collectImages');
 checkInjectedFunction('content/highlight.js', 'highlightImage');
+checkInjectedFunction('content/observe.js', 'observePage');
 
-// The manifest must ask for every permission the popup calls.
-const popupSource = readFileSync(join(root, 'popup/popup.js'), 'utf8');
+// The manifest must ask for every permission the shipped extension calls.
+const extensionSource = scripts
+  .map((filePath) => readFileSync(join(root, filePath), 'utf8'))
+  .join('\n');
 for (const [api, permission] of [
   ['chrome.storage.', 'storage'],
-  ['chrome.scripting.', 'scripting'],
-  ['chrome.tabs.', 'activeTab']
+  ['chrome.scripting.', 'scripting']
 ]) {
-  if (popupSource.includes(api) && !manifest.permissions.includes(permission)) {
-    fail(`popup/popup.js calls ${api} but the manifest omits the "${permission}" permission.`);
+  if (extensionSource.includes(api) && !manifest.permissions.includes(permission)) {
+    fail(`Shipped code calls ${api} but the manifest omits the "${permission}" permission.`);
   }
 }
+if (extensionSource.includes('chrome.scripting.executeScript') && !manifest.permissions.includes('activeTab')) {
+  fail('The extension injects into the clicked tab, but the manifest omits "activeTab".');
+}
 for (const permission of manifest.permissions) {
-  const api = permission === 'activeTab' ? 'chrome.tabs.' : `chrome.${permission}.`;
-  if (!popupSource.includes(api)) {
+  if (permission === 'activeTab') continue;
+  const api = `chrome.${permission}.`;
+  if (!extensionSource.includes(api)) {
     fail(`The manifest asks for "${permission}" but no code uses it. Drop it or use it.`);
   }
 }
@@ -167,4 +197,4 @@ if (problems.length) {
   process.exit(1);
 }
 
-console.log(`✔ ${manifest.name} ${manifest.version} — manifest, pages, and injected functions are sound.`);
+console.log(`✔ ${manifest.name} ${manifest.version} — basic static checks passed.`);

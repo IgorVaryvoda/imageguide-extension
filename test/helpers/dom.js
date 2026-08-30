@@ -7,6 +7,14 @@
  */
 
 const DEFAULT_RECT = { top: 0, bottom: 100, left: 0, right: 100, width: 100, height: 100 };
+const DEFAULT_STYLE = {
+  aspectRatio: 'auto',
+  backgroundImage: 'none',
+  maskImage: 'none',
+  webkitMaskImage: 'none',
+  borderImageSource: 'none',
+  content: 'normal'
+};
 
 export class FakeElement {
   /**
@@ -15,9 +23,16 @@ export class FakeElement {
    */
   constructor(tag, options = {}) {
     this.tagName = tag.toUpperCase();
+    this.nodeType = 1;
     this.attributes = { ...(options.attributes || {}) };
     this.rect = { ...DEFAULT_RECT, ...(options.rect || {}) };
-    this.computed = { aspectRatio: 'auto', backgroundImage: 'none', ...(options.style || {}) };
+    this.computed = { ...DEFAULT_STYLE, ...(options.style || {}) };
+    this.pseudoComputed = Object.fromEntries(
+      Object.entries(options.pseudoStyles || {}).map(([pseudo, style]) => [
+        pseudo,
+        { ...DEFAULT_STYLE, ...style }
+      ])
+    );
     this.children = [];
     this.parentElement = null;
     this.shadowRoot = null;
@@ -52,6 +67,10 @@ export class FakeElement {
 
   removeAttribute(name) {
     delete this.attributes[name];
+  }
+
+  getAttributeNames() {
+    return Object.keys(this.attributes);
   }
 
   getBoundingClientRect() {
@@ -119,12 +138,18 @@ export function installDom(options = {}) {
     window: {
       devicePixelRatio: options.viewport?.dpr ?? 1,
       innerWidth: options.viewport?.width ?? 1280,
-      innerHeight: options.viewport?.height ?? 800
+      innerHeight: options.viewport?.height ?? 800,
+      matchMedia: (query) => ({ matches: options.media?.[query] ?? false })
     },
     document,
     location: { href: baseUrl },
-    performance: { getEntriesByType: () => options.resources ?? [] },
-    getComputedStyle: (element) => element.computed,
+    performance: {
+      timeOrigin: options.timeOrigin ?? 1000,
+      now: options.now || (() => 0),
+      getEntriesByType: () => options.resources ?? []
+    },
+    getComputedStyle: (element, pseudo) =>
+      pseudo ? element.pseudoComputed[pseudo] || DEFAULT_STYLE : element.computed,
     HTMLImageElement: FakeImage,
     HTMLVideoElement: FakeVideo
   };

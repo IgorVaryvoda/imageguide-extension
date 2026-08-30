@@ -107,6 +107,14 @@ h1 {
   padding: 14px;
 }
 
+.grade-block {
+  display: grid;
+  justify-items: center;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
 .grade {
   display: grid;
   place-items: center;
@@ -121,6 +129,10 @@ h1 {
 
 .grade[data-grade="C"] {
   background: var(--warn);
+}
+
+.grade[data-grade="?"] {
+  background: var(--muted);
 }
 
 .grade[data-grade="D"],
@@ -215,6 +227,7 @@ h1 {
 .ghost:focus-visible,
 .link:focus-visible,
 .name:focus-visible,
+.usage-target:focus-visible,
 .icon:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 1px;
@@ -254,7 +267,7 @@ h1 {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) auto;
   gap: 10px;
-  align-items: center;
+  align-items: start;
   width: 100%;
   padding: 8px 6px;
   border-radius: 8px;
@@ -305,12 +318,16 @@ h1 {
 }
 
 .thumb {
+  display: grid;
+  place-items: center;
   width: 44px;
   height: 44px;
   border-radius: 6px;
   border: 1px solid var(--border);
-  object-fit: cover;
   background: var(--surface);
+  color: var(--primary);
+  font: 700 10px/1 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 0.04em;
 }
 
 .name {
@@ -336,6 +353,44 @@ h1 {
 .meta {
   color: var(--muted);
   font-size: 12px;
+}
+
+.usage-group {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.usage-group summary {
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.usage {
+  margin-top: 4px;
+  padding-left: 7px;
+  border-left: 2px solid var(--border);
+}
+
+.usage-target {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.usage-target:hover {
+  color: var(--primary);
+}
+
+.usage-tags {
+  margin-top: 2px;
 }
 
 .tags {
@@ -367,11 +422,30 @@ a.tag:hover {
 }
 
 .footer {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
   align-items: center;
-  justify-content: space-between;
   padding: 10px 14px;
   border-top: 1px solid var(--border);
+}
+
+.full-audit {
+  grid-column: 1 / -1;
+  width: 100%;
+  border: 1px solid var(--primary);
+  border-radius: 7px;
+  padding: 7px 10px;
+  background: var(--primary);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.full-audit:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 .footer a {

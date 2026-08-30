@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ImageGuide browser-grade fixture</title>
+    <style>
+      body { margin: 0; font-family: sans-serif; }
+      main { width: min(900px, calc(100% - 40px)); margin: 0 auto; }
+      .hero { display: block; width: 600px; height: 340px; object-fit: cover; }
+      .row { display: flex; gap: 16px; align-items: center; margin: 24px 0; }
+      .shared-background {
+        width: 180px;
+        height: 90px;
+        background: url("/icons/icon128.png?shared=1") center / contain no-repeat;
+      }
+      .image-set {
+        width: 160px;
+        height: 80px;
+        background-image: image-set(
+          url("/icons/icon48.png?set=1") 1x,
+          url("/icons/icon128.png?set=2") 2x
+        );
+      }
+      .covered {
+        width: 140px;
+        height: 70px;
+        background-image: url("/icons/icon48.png?background=1");
+        mask-image: url("/icons/icon16.png?mask=1");
+        border: 8px solid transparent;
+        border-image-source: url("/icons/icon16.png?border=1");
+      }
+      .covered::before { content: url("/icons/icon16.png?content=1"); }
+      .covered::after {
+        content: "";
+        display: block;
+        width: 20px;
+        height: 20px;
+        background-image: url("/icons/icon16.png?pseudo=1");
+      }
+      .spacer { height: 1100px; }
+      .shift-banner { height: 72px; background: #dbeafe; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Browser evidence fixture</h1>
+      <img
+        id="hero"
+        class="hero"
+        src="/images/screens/01-summary.png"
+        width="600"
+        height="340"
+        loading="lazy"
+        fetchpriority="high"
+        alt="Audit summary"
+      />
+
+      <div class="row">
+        <img
+          id="width-candidate"
+          src="/icons/icon48.png"
+          srcset="/icons/icon128.png?width=128 128w"
+          sizes="64px"
+          width="64"
+          height="64"
+          alt="Width descriptor"
+        />
+        <img
+          id="density-candidate"
+          src="/icons/icon48.png?density=1"
+          srcset="/icons/icon48.png?density=1 1x, /icons/icon128.png?density=2 2x"
+          width="64"
+          height="64"
+          alt="Density descriptor"
+        />
+        <img src="/icons/icon128.png?shared=1" style="width: 48px; height: 48px" />
+        <img
+          src="/icons/icon128.png?shared=1"
+          width="64"
+          height="64"
+          alt="Labelled shared image"
+        />
+        <div class="shared-background" aria-label="Shared background"></div>
+      </div>
+
+      <picture>
+        <source media="(min-width: 4000px)" srcset="/icons/icon128.png?wide=1 128w" />
+        <img src="/icons/icon48.png?fallback=1" width="48" height="48" alt="" />
+      </picture>
+
+      <div class="row">
+        <div class="image-set"></div>
+        <div class="covered"></div>
+        <svg width="80" height="80" viewBox="0 0 80 80" aria-label="SVG image element">
+          <image href="/icons/icon48.png?svg-image=1" width="80" height="80" />
+        </svg>
+        <canvas width="80" height="80" aria-label="Canvas coverage gap"></canvas>
+        <video poster="/icons/icon48.png?poster=1" width="80" height="80"></video>
+        <img src="/auth-image" width="16" height="16" alt="Authenticated image" />
+      </div>
+
+      <iframe src="/test/fixtures/frame-child.html" title="Image fixture frame"></iframe>
+
+      <div class="spacer"></div>
+      <img
+        id="below-fold"
+        src="/icons/icon128.png?below=1"
+        width="128"
+        height="128"
+        loading="lazy"
+        alt="Below-fold image"
+      />
+    </main>
+    <script>
+      setTimeout(() => {
+        const banner = document.createElement('div');
+        banner.className = 'shift-banner';
+        banner.textContent = 'Delayed content that moves the hero';
+        document.body.prepend(banner);
+        window.__fixtureReady = true;
+      }, 180);
+    </script>
+  </body>
+</html>

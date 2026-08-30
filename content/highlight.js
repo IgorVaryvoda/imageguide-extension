@@ -8,7 +8,6 @@
  */
 
 export function highlightImage(markAttribute, elementId, url) {
-  const OUTLINE_ID = 'imageguide-auditor-outline';
   const DURATION_MS = 2600;
 
   // Search the light DOM and every open shadow root.
@@ -57,10 +56,8 @@ export function highlightImage(markAttribute, elementId, url) {
 
   target.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-  document.getElementById(OUTLINE_ID)?.remove();
-
   const outline = document.createElement('div');
-  outline.id = OUTLINE_ID;
+  outline.setAttribute(markAttribute, 'outline');
   outline.style.cssText = [
     'position:fixed',
     'border:3px solid #3b82f6',

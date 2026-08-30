@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ImageGuide timing-buffer fixture</title>
+  </head>
+  <body>
+    <h1>Resource Timing buffer fixture</h1>
+    <script>
+      const loads = [];
+      for (let index = 0; index < 260; index += 1) {
+        const image = new Image(16, 16);
+        image.alt = `Timing image ${index}`;
+        loads.push(new Promise((resolve) => {
+          image.onload = resolve;
+          image.onerror = resolve;
+        }));
+        image.src = `/icons/icon16.png?timing=${index}`;
+        document.body.append(image);
+      }
+      Promise.all(loads).then(() => { window.__fixtureReady = true; });
+    </script>
+  </body>
+</html>

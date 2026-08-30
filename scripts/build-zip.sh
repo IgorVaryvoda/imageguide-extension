@@ -16,7 +16,9 @@ zip -r -q "$output" \
   icons \
   lib \
   content \
+  extension \
   popup \
+  audit \
   -x '*.DS_Store'
 
 echo "Wrote $output"

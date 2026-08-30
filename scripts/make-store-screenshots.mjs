@@ -2,7 +2,7 @@
  * Compose the Chrome Web Store screenshots.
  *
  * The popup captures in `images/screens/` come from the real extension, running
- * against a real page. This script only frames them: it draws the 1280x800
+ * against the checked-in responsive fixture. This script only frames them: it draws the 1280x800
  * canvas the store asks for, writes the caption, and drops the popup in.
  *
  * Capture the popup shots first, then run: npm run screenshots
@@ -21,7 +21,7 @@ const target = join(root, 'store');
 const WIDTH = 1280;
 const HEIGHT = 800;
 
-/** The popup is 420x600. Draw it at this scale inside the canvas. */
+/** Popup captures are 436x493 and padded to the store-card proportion here. */
 const SCALE = 1.15;
 
 const BACKGROUND = '#0f172a';
@@ -37,37 +37,35 @@ const SCREENS = [
   {
     file: '01-summary.png',
     out: 'screenshot-1-summary.png',
-    headline: 'Grade any page\nin one click',
-    subline: 'Every image on the page, weighed and scored.\nThe grade comes from the weight you can avoid.',
-    note: 'A real audit of an article with 44 images.'
+    headline: 'Delivery facts\nin one click',
+    subline: 'Measured resources, modelled opportunity, and\nmarkup findings stay separate.',
+    note: 'Confidence shows how much weight was measured.'
   },
   {
     file: '02-list.png',
     out: 'screenshot-2-list.png',
-    headline: 'See the cost of\nevery image',
-    subline: 'Format, transfer size, and the size to resize to.\nThe worst offender sits at the top.',
-    note: 'Sizes come from the browser, not from a guess.'
+    headline: 'Every usage\nstays visible',
+    subline: 'Repeated URLs share one resource while each\nelement keeps its own markup findings.',
+    note: 'Matched w/x descriptors add source-pixel evidence.'
   },
   {
     file: '03-filter.png',
     out: 'screenshot-3-filter.png',
     headline: 'Filter to the\nproblem you have',
-    subline: 'Ten checks run against every image. Show only\nthe ones that failed a check you care about.',
-    note: 'Each chip carries the avoidable weight behind it.'
+    subline: 'Cautious checks describe what this browser and\nviewport can establish now.',
+    note: 'Decorative alt text and valid fallbacks stay valid.'
   },
   {
     file: '04-search.png',
     out: 'screenshot-4-search.png',
     headline: 'Search and sort\nthe whole page',
-    subline: 'Match a file name or a URL. Order by saving,\nby size, by wasted pixels, or by name.',
+    subline: 'Match a file name or URL. Order by opportunity,\nresponse size, resize opportunity, or name.',
     note: 'The popup remembers your filter and sort.'
   },
   {
     file: '05-actions.png',
     out: 'screenshot-5-actions.png',
-    headline: 'Jump to it,\nor fix it',
-    subline: 'Click a name to scroll to the image and outline it.\nCopy the URL, or open it in the converter.',
-    note: 'Copy the whole audit as Markdown or JSON.'
+    fullAudit: true
   }
 ];
 
@@ -78,7 +76,7 @@ if (!existsSync(source)) {
 
 mkdirSync(target, { recursive: true });
 
-const popupWidth = Math.round(420 * SCALE);
+const popupWidth = Math.round(436 * SCALE);
 const popupHeight = Math.round(600 * SCALE);
 const popupX = WIDTH - popupWidth - 70;
 const popupY = Math.round((HEIGHT - popupHeight) / 2);
@@ -92,9 +90,33 @@ for (const screen of SCREENS) {
 
   const output = join(target, screen.out);
 
+  if (screen.fullAudit) {
+    execFileSync('magick', [
+      input,
+      '-resize', `${WIDTH}x${HEIGHT}^`,
+      '-background', BACKGROUND,
+      '-gravity', 'north',
+      '-extent', `${WIDTH}x${HEIGHT}`,
+      '-alpha', 'remove', '-alpha', 'off',
+      '-depth', '8', '-strip', 'PNG24:' + output
+    ]);
+    console.log(`Wrote ${screen.out}`);
+    continue;
+  }
+
   // Step one: the popup at the size it will sit on the canvas.
   const card = join(tmpdir(), `imageguide-card-${screen.out}`);
-  execFileSync('magick', [input, '-resize', `${popupWidth}x${popupHeight}!`, card]);
+  execFileSync('magick', [
+    input,
+    '-gravity', 'northwest',
+    '-crop', '436x493+0+0', '+repage',
+    '-background', BACKGROUND,
+    '-define', 'compose:outside-overlay=false',
+    '-gravity', 'north',
+    '-extent', '436x600',
+    '-resize', `${popupWidth}x${popupHeight}!`,
+    card
+  ]);
 
   // Step two: the canvas, the words, the shadow, and the card. Every layer
   // lands at a known coordinate, so nothing depends on how magick pads.

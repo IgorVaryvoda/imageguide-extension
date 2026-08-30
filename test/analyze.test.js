@@ -2,276 +2,322 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
-  analyzeImage,
   analyzePage,
+  analyzeResource,
+  analyzeUsage,
   formatOf,
   gradeFor,
   HEAVY_IMAGE_BYTES
 } from '../lib/analyze.js';
-import { estimateBytes, formatFromContentType, formatFromUrl, humanBytes } from '../lib/format.js';
+import { estimateBytes, formatFromContentType, formatFromUrl } from '../lib/format.js';
 
-const baseImage = {
+const baseResource = {
+  id: 'r1',
   url: 'https://example.com/hero.jpg',
+  transferBytes: 900 * 1024,
+  contentType: '',
+  measurementSource: 'resource-timing-encoded',
+  measurementConfidence: 'high',
+  sourcePixelWidth: 2000,
+  sourcePixelHeight: 1500,
+  sourceDimensionConfidence: 'intrinsic',
+  sourceDimensionReason: '',
+  isDataUri: false
+};
+
+const baseUsage = {
+  id: 'u1',
+  resourceId: 'r1',
+  frameId: 0,
+  elementId: '1',
   kind: 'img',
-  naturalWidth: 2000,
-  naturalHeight: 1500,
   displayWidth: 500,
   displayHeight: 375,
   dpr: 1,
-  transferBytes: 900 * 1024,
+  viewportWidth: 1280,
   inViewport: true,
   loading: 'eager',
-  hasAlt: true,
+  altState: 'non-empty',
   hasDimensions: true,
   hasSrcset: true,
   hasSizes: true,
   usesWidthDescriptors: false,
-  usesFallback: false,
-  contentType: '',
-  occurrences: 1
+  pictureFallbackSelected: false,
+  densityCorrectedWidth: 2000,
+  densityCorrectedHeight: 1500,
+  selectedCandidateDescriptor: ''
 };
 
-describe('formatFromUrl', () => {
-  it('reads the file extension', () => {
-    assert.equal(formatFromUrl('https://example.com/a/b/photo.JPG'), 'jpeg');
-    assert.equal(formatFromUrl('https://example.com/photo.avif'), 'avif');
-    assert.equal(formatFromUrl('https://example.com/logo.svg'), 'svg');
-  });
-
-  it('lets a CDN parameter win over the extension', () => {
-    assert.equal(formatFromUrl('https://cdn.test/photo.jpg?w=400&format=webp'), 'webp');
-    assert.equal(formatFromUrl('https://cdn.test/photo.png?fm=avif'), 'avif');
-  });
-
-  it('reads a data URI', () => {
+describe('format detection and byte model', () => {
+  it('reads source formats without false aliases', () => {
+    assert.equal(formatFromUrl('https://example.com/photo.JPG'), 'jpeg');
+    assert.equal(formatFromUrl('https://example.com/photo.jxl'), 'jxl');
+    assert.equal(formatFromUrl('https://example.com/photo.heic'), 'heic');
+    assert.equal(formatFromUrl('https://example.com/favicon.ico'), 'ico');
     assert.equal(formatFromUrl('data:image/png;base64,AAAA'), 'png');
   });
 
-  it('returns unknown when it cannot tell', () => {
-    assert.equal(formatFromUrl('https://example.com/image'), 'unknown');
-    assert.equal(formatFromUrl(''), 'unknown');
-  });
-});
-
-describe('formatFromContentType', () => {
-  it('reads the subtype', () => {
-    assert.equal(formatFromContentType('image/webp'), 'webp');
-    assert.equal(formatFromContentType('image/jpeg; charset=binary'), 'jpeg');
+  it('lets a CDN format parameter and then Content-Type beat the extension', () => {
+    assert.equal(formatFromUrl('https://cdn.test/photo.jpg?format=webp'), 'webp');
     assert.equal(formatFromContentType('image/svg+xml'), 'svg');
+    assert.equal(
+      formatOf({ url: 'https://cdn.test/photo.jpg', contentType: 'image/avif' }),
+      'avif'
+    );
   });
 
-  it('returns unknown for a missing header', () => {
-    assert.equal(formatFromContentType(null), 'unknown');
+  it('returns unknown when no source reveals the format', () => {
+    assert.equal(formatFromUrl('https://example.com/image'), 'unknown');
     assert.equal(formatFromContentType('text/html'), 'unknown');
   });
-});
 
-describe('estimateBytes', () => {
-  it('scales with the pixel count', () => {
-    const small = estimateBytes(500, 500, 'jpeg');
-    const large = estimateBytes(1000, 1000, 'jpeg');
-    assert.equal(large, small * 4);
-  });
-
-  it('returns zero without dimensions', () => {
+  it('scales raster estimates by pixels and keeps SVG flat', () => {
+    assert.equal(estimateBytes(1000, 1000, 'jpeg'), estimateBytes(500, 500, 'jpeg') * 4);
     assert.equal(estimateBytes(0, 500, 'jpeg'), 0);
-  });
-
-  it('gives an SVG a flat size, because its weight is not pixels', () => {
     assert.equal(estimateBytes(64, 64, 'svg'), estimateBytes(4000, 4000, 'svg'));
-    assert.ok(estimateBytes(0, 0, 'svg') > 0);
   });
 });
 
-describe('formatOf', () => {
-  it('lets the Content-Type header beat the file name', () => {
-    const image = { url: 'https://cdn.test/photo.jpg', contentType: 'image/avif' };
-    assert.equal(formatOf(image), 'avif');
-  });
+describe('analyzeResource', () => {
+  it('analyzes one transfer across all usages and keeps separate opportunities', () => {
+    const result = analyzeResource(baseResource, [baseUsage]);
 
-  it('falls back to the URL when no header is known', () => {
-    assert.equal(formatOf({ url: 'https://cdn.test/photo.jpg', contentType: '' }), 'jpeg');
-  });
-});
-
-describe('analyzeImage', () => {
-  it('flags an oversized legacy image and estimates the saving', () => {
-    const result = analyzeImage(baseImage);
     assert.ok(result.issues.includes('oversized'));
     assert.ok(result.issues.includes('legacyFormat'));
     assert.ok(result.issues.includes('heavy'));
-    assert.ok(result.savingBytes > result.bytes * 0.9, 'a 4x oversized JPEG saves nearly everything');
+    assert.ok(result.resizeSaving > 0);
+    assert.ok(result.formatSaving > 0);
+    assert.equal(result.resizeSaving + result.formatSaving, result.savingBytes);
     assert.equal(result.recommendedFormat, 'avif');
   });
 
-  it('leaves a correctly sized AVIF alone', () => {
-    const result = analyzeImage({
-      ...baseImage,
-      url: 'https://example.com/hero.avif',
-      naturalWidth: 1000,
-      naturalHeight: 750,
-      dpr: 2,
-      transferBytes: 40 * 1024
-    });
-    assert.deepEqual(result.issues, []);
-    assert.equal(result.savingBytes, 0);
+  it('uses the most demanding dimension across every usage', () => {
+    const resource = {
+      ...baseResource,
+      sourcePixelWidth: 2000,
+      sourcePixelHeight: 1000
+    };
+    const usages = [
+      { ...baseUsage, id: 'u1', displayWidth: 600, displayHeight: 100 },
+      { ...baseUsage, id: 'u2', displayWidth: 400, displayHeight: 500 }
+    ];
+    const result = analyzeResource(resource, usages);
+
+    assert.equal(result.primaryUsageId, 'u2');
+    assert.equal(result.resizeWidth, 1000);
+    assert.equal(result.resizeHeight, 500);
   });
 
-  it('respects the device pixel ratio when it sets the target width', () => {
-    const oneX = analyzeImage({ ...baseImage, naturalWidth: 1000, naturalHeight: 750, dpr: 1 });
-    const twoX = analyzeImage({ ...baseImage, naturalWidth: 1000, naturalHeight: 750, dpr: 2 });
-    assert.ok(oneX.issues.includes('oversized'));
-    assert.ok(!twoX.issues.includes('oversized'), 'a 1000px source suits a 500px box at 2x');
+  it('uses the full browser DPR without a 2x cap', () => {
+    const result = analyzeResource(
+      { ...baseResource, sourcePixelWidth: 1500, sourcePixelHeight: 1125 },
+      [{ ...baseUsage, dpr: 3 }]
+    );
+    assert.equal(result.targetWidth, 1500);
+    assert.ok(!result.issues.includes('oversized'));
   });
 
-  it('caps the useful ratio, so a 3x screen does not excuse a huge file', () => {
-    const result = analyzeImage({ ...baseImage, dpr: 3, naturalWidth: 1500, naturalHeight: 1125 });
-    assert.equal(result.targetWidth, 1000);
-  });
-
-  it('flags a lazy hero and an eager image below the fold', () => {
-    const lazyHero = analyzeImage({ ...baseImage, loading: 'lazy', inViewport: true });
-    assert.ok(lazyHero.issues.includes('lazyHero'));
-
-    const eagerBelow = analyzeImage({ ...baseImage, loading: 'eager', inViewport: false });
-    assert.ok(eagerBelow.issues.includes('noLazyLoading'));
-  });
-
-  it('reports missing alt text, dimensions, and srcset', () => {
-    const result = analyzeImage({
-      ...baseImage,
-      hasAlt: false,
-      hasDimensions: false,
-      hasSrcset: false
-    });
-    assert.ok(result.issues.includes('noAlt'));
-    assert.ok(result.issues.includes('noDimensions'));
-    assert.ok(result.issues.includes('noSrcset'));
-  });
-
-  it('skips the markup checks for a background image', () => {
-    const result = analyzeImage({ ...baseImage, kind: 'background', hasAlt: false });
-    assert.ok(!result.issues.includes('noAlt'));
-  });
-
-  it('falls back to an estimate when the browser hides the size', () => {
-    const result = analyzeImage({ ...baseImage, transferBytes: 0 });
+  it('makes no exact resize claim when source pixels are unknown', () => {
+    const result = analyzeResource(
+      {
+        ...baseResource,
+        transferBytes: 0,
+        sourcePixelWidth: 0,
+        sourcePixelHeight: 0,
+        sourceDimensionConfidence: 'unknown'
+      },
+      [baseUsage]
+    );
     assert.equal(result.measured, false);
     assert.ok(result.bytes > 0);
-  });
-
-  it('flags a srcset that uses width descriptors without a sizes attribute', () => {
-    const missing = analyzeImage({ ...baseImage, usesWidthDescriptors: true, hasSizes: false });
-    assert.ok(missing.issues.includes('noSizes'));
-
-    const present = analyzeImage({ ...baseImage, usesWidthDescriptors: true, hasSizes: true });
-    assert.ok(!present.issues.includes('noSizes'));
-  });
-
-  it('flags a picture whose sources never matched', () => {
-    const result = analyzeImage({ ...baseImage, usesFallback: true });
-    assert.ok(result.issues.includes('unusedSources'));
-  });
-
-  it('never calls a vector oversized, and never resizes it', () => {
-    const result = analyzeImage({
-      ...baseImage,
-      url: 'https://example.com/logo.svg',
-      naturalWidth: 2000,
-      naturalHeight: 1500,
-      displayWidth: 40,
-      displayHeight: 30,
-      transferBytes: 3000
-    });
-    assert.ok(!result.issues.includes('oversized'));
-    assert.equal(result.savingBytes, 0);
-  });
-
-  it('splits the saving between the resize and the format', () => {
-    const result = analyzeImage(baseImage);
-    assert.ok(result.resizeSaving > 0, 'a 4x oversized image saves on the resize');
-    assert.ok(result.formatSaving > 0, 'a JPEG still saves on the format');
-    assert.equal(result.resizeSaving + result.formatSaving, result.savingBytes);
-  });
-
-  it('charges no resize saving to an image that already fits', () => {
-    const result = analyzeImage({ ...baseImage, naturalWidth: 500, naturalHeight: 375 });
     assert.equal(result.resizeSaving, 0);
-    assert.equal(result.formatSaving, result.savingBytes);
+    assert.ok(!result.issues.includes('oversized'));
   });
 
-  it('calls a file heavy exactly at the threshold', () => {
-    const result = analyzeImage({
-      ...baseImage,
-      naturalWidth: 500,
-      naturalHeight: 375,
-      transferBytes: HEAVY_IMAGE_BYTES
+  it('does not invent provenance for a measured byte count', () => {
+    const result = analyzeResource(
+      { ...baseResource, measurementSource: '', measurementConfidence: '' },
+      [baseUsage]
+    );
+    assert.deepEqual(result.measurement, {
+      bytes: baseResource.transferBytes,
+      source: 'unknown',
+      confidence: 'low'
     });
-    assert.ok(result.issues.includes('heavy'));
+  });
+
+  it('preserves source aspect ratio for a cover-like box', () => {
+    const result = analyzeResource(
+      { ...baseResource, sourcePixelWidth: 2000, sourcePixelHeight: 1000 },
+      [{ ...baseUsage, displayWidth: 500, displayHeight: 500 }]
+    );
+    assert.equal(result.resizeWidth, 1000);
+    assert.equal(result.resizeHeight, 500);
+  });
+
+  it('treats WebP as modern and AVIF as a separate opportunity', () => {
+    const result = analyzeResource(
+      { ...baseResource, url: 'https://example.com/hero.webp' },
+      [baseUsage]
+    );
+    assert.ok(!result.issues.includes('legacyFormat'));
+    assert.ok(result.issues.includes('avifOpportunity'));
+  });
+
+  it('never resizes a vector and includes the heavy threshold', () => {
+    const vector = analyzeResource(
+      {
+        ...baseResource,
+        url: 'https://example.com/logo.svg',
+        transferBytes: 3000
+      },
+      [{ ...baseUsage, displayWidth: 40, displayHeight: 30 }]
+    );
+    assert.ok(!vector.issues.includes('oversized'));
+    assert.equal(vector.resizeSaving, 0);
+
+    const heavy = analyzeResource(
+      { ...baseResource, transferBytes: HEAVY_IMAGE_BYTES },
+      [{ ...baseUsage, displayWidth: 2000, displayHeight: 1500 }]
+    );
+    assert.ok(heavy.issues.includes('heavy'));
+  });
+});
+
+describe('analyzeUsage', () => {
+  const oversized = analyzeResource(baseResource, [baseUsage]);
+
+  it('reports current viewport loading facts without claiming LCP', () => {
+    assert.ok(
+      analyzeUsage({ ...baseUsage, loading: 'lazy', inViewport: true }, oversized).issues.includes(
+        'lazyVisible'
+      )
+    );
+    assert.ok(
+      analyzeUsage({ ...baseUsage, loading: 'eager', inViewport: false }, oversized).issues.includes(
+        'eagerOffscreen'
+      )
+    );
+  });
+
+  it('uses browser LCP and layout-shift evidence without overstating causality', () => {
+    const result = analyzeUsage(
+      { ...baseUsage, loading: 'lazy', isLcp: true, layoutShiftCount: 1 },
+      oversized
+    );
+    assert.ok(result.issues.includes('lazyLcp'));
+    assert.ok(!result.issues.includes('lazyVisible'));
+    assert.ok(result.issues.includes('layoutShiftSource'));
+  });
+
+  it('keeps alt and dimension findings per element', () => {
+    const missing = analyzeUsage(
+      { ...baseUsage, altState: 'missing', hasDimensions: false, hasSrcset: false },
+      oversized
+    );
+    assert.ok(missing.issues.includes('noAlt'));
+    assert.ok(missing.issues.includes('noDimensions'));
+    assert.ok(missing.issues.includes('responsiveOpportunity'));
+
+    const decorative = analyzeUsage({ ...baseUsage, altState: 'empty' }, oversized);
+    assert.ok(!decorative.issues.includes('noAlt'));
+  });
+
+  it('finds a small non-responsive reuse even when another usage needs the full resource', () => {
+    const fullUsage = { ...baseUsage, id: 'u-full', displayWidth: 2000, displayHeight: 1500 };
+    const shared = analyzeResource(baseResource, [fullUsage, baseUsage]);
+    assert.ok(!shared.issues.includes('oversized'));
+
+    const small = analyzeUsage({ ...baseUsage, hasSrcset: false }, shared);
+    assert.ok(small.issues.includes('responsiveOpportunity'));
+  });
+
+  it('does not apply img markup findings to a background usage', () => {
+    const result = analyzeUsage(
+      { ...baseUsage, kind: 'background', altState: 'missing', hasDimensions: false },
+      oversized
+    );
+    assert.deepEqual(result.issues, []);
+  });
+
+  it('flags a material default-sizes mismatch only for width descriptors', () => {
+    const missing = analyzeUsage(
+      { ...baseUsage, usesWidthDescriptors: true, hasSizes: false },
+      oversized
+    );
+    assert.ok(missing.issues.includes('sizesMismatch'));
+
+    const fullWidth = analyzeUsage(
+      {
+        ...baseUsage,
+        displayWidth: 1100,
+        usesWidthDescriptors: true,
+        hasSizes: false
+      },
+      oversized
+    );
+    assert.ok(!fullWidth.issues.includes('sizesMismatch'));
+  });
+
+  it('does not call a valid picture fallback an issue', () => {
+    const result = analyzeUsage({ ...baseUsage, pictureFallbackSelected: true }, oversized);
+    assert.ok(!result.issues.includes('unusedSources'));
   });
 });
 
 describe('analyzePage', () => {
-  it('totals the bytes and sorts the worst offender first', () => {
-    const report = analyzePage([
-      { ...baseImage, url: 'https://example.com/small.avif', naturalWidth: 100, naturalHeight: 100, displayWidth: 100, displayHeight: 100, transferBytes: 3000 },
-      { ...baseImage, url: 'https://example.com/big.jpg' }
-    ]);
+  it('counts resource findings once and markup findings once per usage', () => {
+    const usages = [
+      { ...baseUsage, id: 'u1', altState: 'non-empty' },
+      { ...baseUsage, id: 'u2', altState: 'missing' },
+      { ...baseUsage, id: 'u3', kind: 'background', altState: 'not-applicable' }
+    ];
+    const report = analyzePage([baseResource], usages);
 
-    assert.equal(report.summary.count, 2);
-    assert.equal(report.images[0].url, 'https://example.com/big.jpg');
-    assert.equal(report.summary.totalBytes, 900 * 1024 + 3000);
-    assert.ok(report.summary.savingRatio > 0.5);
-    assert.equal(report.summary.grade, 'F');
+    assert.equal(report.summary.resourceCount, 1);
+    assert.equal(report.summary.usageCount, 3);
+    assert.equal(report.summary.totalBytes, baseResource.transferBytes, 'bytes count once');
     assert.equal(report.summary.issueStats.oversized.count, 1);
-  });
-
-  it('counts the avoidable weight behind each weight issue', () => {
-    const report = analyzePage([{ ...baseImage }]);
-    const { issueStats, savingBytes } = report.summary;
-
-    assert.equal(issueStats.oversized.savingBytes, savingBytes);
-    assert.equal(issueStats.legacyFormat.savingBytes, savingBytes);
-    // A markup issue costs no bytes, so it carries no saving.
-    assert.equal(issueStats.noSrcset, undefined);
-  });
-
-  it('gives a markup issue a count but no saving', () => {
-    const report = analyzePage([{ ...baseImage, hasAlt: false }]);
+    assert.equal(report.summary.issueStats.oversized.savingBytes, report.summary.resizeSaving);
+    assert.equal(report.summary.issueStats.legacyFormat.savingBytes, report.summary.formatSaving);
     assert.equal(report.summary.issueStats.noAlt.count, 1);
-    assert.equal(report.summary.issueStats.noAlt.savingBytes, 0);
+    assert.equal(report.summary.markupIssueCount, 1);
+    assert.ok(report.resources[0].allIssues.includes('noAlt'));
   });
 
-  it('totals the saving split across the page', () => {
-    const report = analyzePage([{ ...baseImage }, { ...baseImage, url: 'https://example.com/b.jpg' }]);
-    const { resizeSaving, formatSaving, savingBytes } = report.summary;
-    assert.equal(resizeSaving + formatSaving, savingBytes);
+  it('bases the grade on measured resources and reports model coverage separately', () => {
+    const estimated = {
+      ...baseResource,
+      id: 'r2',
+      url: 'https://example.com/model.png',
+      transferBytes: 0
+    };
+    const report = analyzePage(
+      [baseResource, estimated],
+      [baseUsage, { ...baseUsage, id: 'u2', resourceId: 'r2' }]
+    );
+
+    assert.equal(report.summary.measuredResourceCount, 1);
+    assert.equal(report.summary.estimatedResourceCount, 1);
+    assert.notEqual(report.summary.grade, '?');
+    assert.ok(report.summary.measuredByteRatio > 0 && report.summary.measuredByteRatio < 1);
   });
 
-  it('handles an empty page', () => {
-    const report = analyzePage([]);
-    assert.equal(report.summary.count, 0);
-    assert.equal(report.summary.savingRatio, 0);
-    assert.equal(report.summary.grade, 'A');
-    assert.deepEqual(report.summary.issueStats, {});
+  it('uses an unavailable grade when nothing was measured', () => {
+    const resource = { ...baseResource, transferBytes: 0 };
+    const report = analyzePage([resource], [baseUsage]);
+    assert.equal(report.summary.grade, '?');
+    assert.equal(gradeFor(0.1), 'A');
+    assert.equal(gradeFor(0.7), 'F');
   });
-});
 
-describe('gradeFor', () => {
-  it('maps a saving ratio to a letter', () => {
-    assert.equal(gradeFor(0), 'A');
-    assert.equal(gradeFor(0.2), 'B');
-    assert.equal(gradeFor(0.4), 'C');
-    assert.equal(gradeFor(0.6), 'D');
-    assert.equal(gradeFor(0.9), 'F');
-  });
-});
-
-describe('humanBytes', () => {
-  it('picks a readable unit', () => {
-    assert.equal(humanBytes(0), '0 B');
-    assert.equal(humanBytes(512), '512 B');
-    assert.equal(humanBytes(2048), '2.0 kB');
-    assert.equal(humanBytes(2 * 1024 * 1024), '2.00 MB');
+  it('keeps browser vitals separate from the delivery grade', () => {
+    const vitals = {
+      lcp: { supported: true, time: 2200 },
+      cls: { supported: true, score: 0.12, shiftCount: 2 }
+    };
+    const report = analyzePage([baseResource], [baseUsage], { vitals });
+    assert.equal(report.summary.vitals, vitals);
+    assert.notEqual(report.summary.grade, '?');
   });
 });

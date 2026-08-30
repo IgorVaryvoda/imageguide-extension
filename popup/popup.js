@@ -1,22 +1,27 @@
 import { analyzePage, ISSUES } from '../lib/analyze.js';
 import {
   CONVERTER_URL,
-  MARK_ATTRIBUTE,
-  MAX_ELEMENTS_SCANNED,
+  MAX_RESPONSE_CHECKS,
   MAX_ROWS,
-  RESOURCE_TIMING_BUFFER
 } from '../lib/constants.js';
 import { humanBytes } from '../lib/format.js';
-import { mergeFrames } from '../lib/merge.js';
 import {
   buildJsonReport,
   buildMarkdownReport,
   fileNameFromUrl,
-  filterImages,
-  sortImages
+  filterResources,
+  sortResources
 } from '../lib/report.js';
-import { collectImages } from '../content/collect.js';
-import { highlightImage } from '../content/highlight.js';
+import {
+  activeTab,
+  highlightUsage as highlightTabUsage,
+  scanTab
+} from '../extension/tab.js';
+import {
+  measureResources,
+  originPattern,
+  snapshotPermissions
+} from '../extension/measure.js';
 
 const elements = {
   loading: document.getElementById('state-loading'),
@@ -32,11 +37,15 @@ const elements = {
   barFill: document.getElementById('bar-fill'),
   resizeSaving: document.getElementById('resize-saving'),
   formatSaving: document.getElementById('format-saving'),
+  confidence: document.getElementById('confidence'),
+  vitals: document.getElementById('vitals'),
   measureNote: document.getElementById('measure-note'),
   estimatedCount: document.getElementById('estimated-count'),
   measure: document.getElementById('measure'),
   truncateNote: document.getElementById('truncate-note'),
   bufferNote: document.getElementById('buffer-note'),
+  coverageNote: document.getElementById('coverage-note'),
+  usageCount: document.getElementById('usage-count'),
   filters: document.getElementById('filters'),
   search: document.getElementById('search'),
   sort: document.getElementById('sort'),
@@ -44,11 +53,25 @@ const elements = {
   listNote: document.getElementById('list-note'),
   rescan: document.getElementById('rescan'),
   copy: document.getElementById('copy'),
-  copyJson: document.getElementById('copy-json')
+  copyJson: document.getElementById('copy-json'),
+  openAudit: document.getElementById('open-audit')
 };
 
-/** @type {{page: object|null, report: object|null, filter: string, sort: string, search: string}} */
-const state = { page: null, report: null, filter: 'all', sort: 'saving', search: '' };
+/** @type {{tabId: number|null, page: object|null, report: object|null, filter: string, sort: string, search: string, markAttribute: string, watchKey: string, pregrantedOrigins: Map<string, boolean>|null}} */
+const state = {
+  tabId: null,
+  page: null,
+  report: null,
+  filter: 'all',
+  sort: 'saving',
+  search: '',
+  markAttribute: '',
+  watchKey: '',
+  pregrantedOrigins: null
+};
+
+let scanGeneration = 0;
+let permissionSnapshotGeneration = 0;
 
 const SETTING_KEYS = ['filter', 'sort'];
 
@@ -74,64 +97,32 @@ function show(section) {
   }
 }
 
-async function activeTab() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) throw new Error('No active tab.');
-  return tab;
-}
-
-/**
- * Run a function in every frame of the page we can reach.
- * A cross-origin frame that activeTab does not cover simply returns nothing.
- */
-async function runInAllFrames(func, args = []) {
-  const tab = await activeTab();
-  let results;
-  try {
-    results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id, allFrames: true },
-      func,
-      args
-    });
-  } catch {
-    // Some pages refuse an all-frames injection. The top frame still works.
-    results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func,
-      args
-    });
-  }
-  return results
-    .filter((entry) => entry && entry.result)
-    .map((entry) => ({ frameId: entry.frameId ?? 0, ...entry.result }));
-}
-
-async function runInFrame(frameId, func, args = []) {
-  const tab = await activeTab();
-  const [result] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id, frameIds: [frameId ?? 0] },
-    func,
-    args
-  });
-  return result?.result;
-}
-
 async function scan() {
+  const generation = ++scanGeneration;
+  elements.rescan.disabled = true;
   show('loading');
   try {
-    const frames = await runInAllFrames(collectImages, [
-      MARK_ATTRIBUTE,
-      MAX_ELEMENTS_SCANNED,
-      RESOURCE_TIMING_BUFFER
-    ]);
-    state.page = mergeFrames(frames);
+    const tab = await activeTab();
+    const sameTab = state.tabId === tab.id;
+    const result = await scanTab(tab.id, {
+      watchKey: sameTab ? state.watchKey : '',
+      previousMarkAttribute: sameTab ? state.markAttribute : ''
+    });
+    if (generation !== scanGeneration) return;
+    state.tabId = tab.id;
+    state.page = result.page;
+    state.markAttribute = result.markAttribute;
+    state.watchKey = result.watchKey;
   } catch (error) {
+    if (generation !== scanGeneration) return;
     elements.errorMessage.textContent = String(error?.message || error);
     show('error');
     return;
+  } finally {
+    if (generation === scanGeneration) elements.rescan.disabled = false;
   }
 
-  if (!state.page?.images?.length) {
+  if (!state.page?.resources?.length) {
     show('empty');
     return;
   }
@@ -140,27 +131,89 @@ async function scan() {
 }
 
 function render() {
-  state.report = analyzePage(state.page.images);
+  state.report = analyzePage(state.page.resources, state.page.usages, state.page);
   const { summary } = state.report;
 
   elements.grade.textContent = summary.grade;
   elements.grade.dataset.grade = summary.grade;
+  elements.grade.title =
+    summary.grade === '?'
+      ? 'Delivery grade unavailable until at least one resource size is measured.'
+      : `Delivery grade based on ${summary.measuredResourceCount} measured resources.`;
   elements.saving.textContent = humanBytes(summary.savingBytes);
-  elements.count.textContent = String(summary.count);
+  elements.count.textContent = String(summary.resourceCount);
+  elements.usageCount.textContent = String(summary.usageCount);
   elements.total.textContent = humanBytes(summary.totalBytes);
   elements.optimised.textContent = humanBytes(summary.optimisedBytes);
   elements.barFill.style.width = `${Math.round(summary.savingRatio * 100)}%`;
   elements.resizeSaving.textContent = humanBytes(summary.resizeSaving);
   elements.formatSaving.textContent = humanBytes(summary.formatSaving);
+  elements.confidence.textContent =
+    `${Math.round(summary.measuredByteRatio * 100)}% of modelled weight measured` +
+    ` · ${summary.markupIssueCount} markup findings`;
+  const lcp = summary.vitals?.lcp;
+  const cls = summary.vitals?.cls;
+  elements.vitals.textContent =
+    `LCP ${lcp?.time > 0 ? `${(lcp.time / 1000).toFixed(2)} s` : lcp?.supported ? 'not captured' : 'unsupported'}` +
+    ` · CLS ${cls?.supported ? Number(cls.score || 0).toFixed(3) : 'unsupported'}`;
 
-  elements.measureNote.hidden = summary.estimatedCount === 0;
-  elements.estimatedCount.textContent = String(summary.estimatedCount);
-  elements.truncateNote.hidden = !state.page.truncated;
-  elements.bufferNote.hidden = !state.page.timingBufferFull || summary.estimatedCount === 0;
+  elements.measureNote.hidden = summary.estimatedResourceCount === 0;
+  elements.estimatedCount.textContent = String(summary.estimatedResourceCount);
+  const limitWarnings = [];
+  if (state.page.truncated) limitWarnings.push('The element scan stopped early.');
+  if (state.page.styleScanTruncated) limitWarnings.push('The CSS and pseudo-element scan hit its time budget.');
+  if (state.page.recordsTruncated) {
+    limitWarnings.push(
+      `${state.page.skippedResources} resources and ${state.page.skippedUsages} usages ` +
+        'exceeded the record or payload limits.'
+    );
+  }
+  elements.truncateNote.hidden = limitWarnings.length === 0;
+  elements.truncateNote.textContent = `${limitWarnings.join(' ')} Totals are a lower bound.`;
+  elements.bufferNote.hidden =
+    !state.page.timingBufferFull || summary.estimatedResourceCount === 0;
+  const coverage = [];
+  if (state.page.unsupported?.canvas) {
+    coverage.push(`${state.page.unsupported.canvas} canvas elements cannot be mapped back to source images.`);
+  }
+  if (state.page.unsupported?.imageSetSelection) {
+    coverage.push(
+      `${state.page.unsupported.imageSetSelection} typed image-set selections could not be established.`
+    );
+  }
+  elements.coverageNote.hidden = coverage.length === 0;
+  elements.coverageNote.textContent = coverage.join(' ');
 
   renderFilters();
-  renderImages();
+  renderResources();
   show('results');
+  preparePermissionSnapshot();
+}
+
+async function preparePermissionSnapshot() {
+  const generation = ++permissionSnapshotGeneration;
+  const pending = pendingResponseChecks();
+  const origins = [...new Set(pending.map((image) => originPattern(image.url)).filter(Boolean))];
+  state.pregrantedOrigins = null;
+  elements.measure.disabled = origins.length > 0;
+  if (!origins.length) return;
+
+  try {
+    if (generation !== permissionSnapshotGeneration) return;
+    state.pregrantedOrigins = await snapshotPermissions(pending);
+    if (generation !== permissionSnapshotGeneration) return;
+    elements.measure.disabled = false;
+  } catch {
+    // Without a trustworthy snapshot we cannot safely revoke only new grants.
+    if (generation === permissionSnapshotGeneration) elements.measure.disabled = true;
+  }
+}
+
+function pendingResponseChecks() {
+  // ponytail: one bounded batch keeps huge pages finite; add cancellation if 100 is too slow.
+  return state.report.resources
+    .filter((resource) => !resource.measured && !resource.isDataUri)
+    .slice(0, MAX_RESPONSE_CHECKS);
 }
 
 function renderFilters() {
@@ -170,7 +223,7 @@ function renderFilters() {
   // A filter that matches nothing would trap the user on an empty list.
   if (state.filter !== 'all' && !stats[state.filter]) state.filter = 'all';
 
-  const entries = [['all', `All ${summary.count}`, 'Show every image']];
+  const entries = [['all', `All ${summary.resourceCount}`, 'Show every resource']];
   for (const [key, stat] of Object.entries(stats).sort((a, b) => b[1].count - a[1].count)) {
     const hint = ISSUES[key]?.hint ?? '';
     const weight =
@@ -190,81 +243,56 @@ function renderFilters() {
       state.filter = key;
       saveSettings();
       renderFilters();
-      renderImages();
+      renderResources();
     });
     elements.filters.appendChild(chip);
   }
 }
 
-function renderImages() {
-  const matched = sortImages(
-    filterImages(state.report.images, state.filter, state.search),
+function renderResources() {
+  const matched = sortResources(
+    filterResources(state.report.resources, state.filter, state.search),
     state.sort
   );
 
   elements.images.replaceChildren();
-  for (const image of matched.slice(0, MAX_ROWS)) {
-    elements.images.appendChild(imageRow(image));
+  for (const resource of matched.slice(0, MAX_ROWS)) {
+    elements.images.appendChild(resourceRow(resource));
   }
 
   if (matched.length === 0) {
     elements.listNote.hidden = false;
-    elements.listNote.textContent = 'No image matches this filter.';
+    elements.listNote.textContent = 'No resource matches this filter.';
   } else if (matched.length > MAX_ROWS) {
     elements.listNote.hidden = false;
-    elements.listNote.textContent = `${matched.length - MAX_ROWS} more images are not listed.`;
+    elements.listNote.textContent = `${matched.length - MAX_ROWS} more resources are not listed.`;
   } else {
     elements.listNote.hidden = true;
   }
 }
 
-function imageRow(image) {
-  const item = document.createElement('li');
-  item.className = 'image';
-
-  const thumb = document.createElement('img');
-  thumb.className = 'thumb';
-  thumb.loading = 'lazy';
-  thumb.src = image.url;
-  thumb.alt = '';
-
-  const body = document.createElement('div');
-  body.className = 'body';
-
-  const name = document.createElement('button');
-  name.type = 'button';
-  name.className = 'name';
-  name.textContent = fileNameFromUrl(image.url);
-  name.title = `${image.url}\nClick to scroll to it in the page.`;
-  name.addEventListener('click', async () => {
-    try {
-      await runInFrame(image.frameId, highlightImage, [MARK_ATTRIBUTE, image.elementId, image.url]);
-    } catch {
-      // The frame went away since the scan. Nothing to scroll to.
-      flash(name, 'Gone from the page');
+async function highlightUsage(button, usage, url) {
+  if (!usage) return;
+  try {
+    const highlighted = await highlightTabUsage(
+      state.tabId,
+      state.markAttribute,
+      usage,
+      url
+    );
+    if (!highlighted) {
+      flash(button, 'Gone from the page');
       return;
     }
-    window.close();
-  });
+  } catch {
+    flash(button, 'Gone from the page');
+    return;
+  }
+  window.close();
+}
 
-  // Show the size to resize to, not the CSS box. That number is the action.
-  const natural = `${image.naturalWidth}×${image.naturalHeight}`;
-  const target = `${image.targetWidth}×${image.targetHeight}`;
-  const pixels = image.issues.includes('oversized') ? `${natural} → ${target}` : natural;
-  const repeat = image.occurrences > 1 ? ` · ×${image.occurrences}` : '';
-
-  const meta = document.createElement('div');
-  meta.className = 'meta';
-  meta.textContent =
-    `${image.format.toUpperCase()} · ${humanBytes(image.bytes)}${image.measured ? '' : ' est.'}` +
-    ` · ${pixels}${repeat}`;
-  meta.title =
-    `Natural size ${natural}. The ${image.displayWidth}×${image.displayHeight} box needs ${target} ` +
-    `at ${Math.min(image.dpr || 1, 2)}× density.`;
-
-  const tags = document.createElement('div');
-  tags.className = 'tags';
-  for (const issue of image.issues) {
+function appendIssueTags(container, issues) {
+  for (const issue of issues) {
     const tag = document.createElement(ISSUES[issue]?.guide ? 'a' : 'span');
     tag.className = 'tag';
     tag.textContent = ISSUES[issue]?.label ?? issue;
@@ -274,17 +302,99 @@ function imageRow(image) {
       tag.target = '_blank';
       tag.rel = 'noreferrer';
     }
-    tags.appendChild(tag);
+    container.appendChild(tag);
   }
+}
+
+function resourceRow(resource) {
+  const item = document.createElement('li');
+  item.className = 'image';
+
+  const thumb = document.createElement('span');
+  thumb.className = 'thumb';
+  thumb.textContent = resource.format.slice(0, 4).toUpperCase();
+  thumb.setAttribute('aria-hidden', 'true');
+
+  const body = document.createElement('div');
+  body.className = 'body';
+
+  const primary =
+    resource.usages.find((usage) => usage.id === resource.primaryUsageId) || resource.usages[0];
+
+  const name = document.createElement('button');
+  name.type = 'button';
+  name.className = 'name';
+  name.textContent = fileNameFromUrl(resource.url);
+  name.title = `${resource.url}\nClick to scroll to the most demanding usage.`;
+  name.addEventListener('click', () => highlightUsage(name, primary, resource.url));
+
+  // Keep the source aspect ratio when showing the modelled resize action.
+  const natural = resource.sourcePixelWidth
+    ? `${resource.sourcePixelWidth}×${resource.sourcePixelHeight}`
+    : 'source pixels unknown';
+  const resize = `${resource.resizeWidth}×${resource.resizeHeight}`;
+  const pixels = resource.issues.includes('oversized') ? `${natural} → ${resize}` : natural;
+  const useCount = `${resource.usages.length} ${resource.usages.length === 1 ? 'usage' : 'usages'}`;
+
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  meta.textContent =
+    `${resource.format.toUpperCase()} · ${humanBytes(resource.bytes)}` +
+    `${resource.measured ? '' : ' model'} · ${pixels} · ${useCount}`;
+  meta.title =
+    `Source size ${natural} (${resource.sourceDimensionConfidence}). ` +
+    `Most demanding recorded usage needs ${resource.targetWidth}×${resource.targetHeight}. ` +
+    `Size source: ${resource.measurement.source} (${resource.measurement.confidence}).`;
+
+  const tags = document.createElement('div');
+  tags.className = 'tags';
+  appendIssueTags(tags, resource.issues);
+  if (resource.usages.length === 1) appendIssueTags(tags, resource.usages[0].issues);
 
   body.append(name, meta, tags);
+
+  if (resource.usages.length > 1) {
+    const details = document.createElement('details');
+    details.className = 'usage-group';
+    const summary = document.createElement('summary');
+    const findingCount = resource.usages.reduce(
+      (count, usage) => count + usage.issues.length,
+      0
+    );
+    summary.textContent =
+      `Show ${resource.usages.length} usages` +
+      (findingCount ? ` · ${findingCount} markup findings` : '');
+    details.appendChild(summary);
+
+    for (const usage of resource.usages) {
+      const usageRow = document.createElement('div');
+      usageRow.className = 'usage';
+      const target = document.createElement('button');
+      target.type = 'button';
+      target.className = 'usage-target';
+      target.textContent =
+        `${usage.kind.toUpperCase()} · ${usage.displayWidth}×${usage.displayHeight}` +
+        (usage.selectedCandidateDescriptor ? ` · ${usage.selectedCandidateDescriptor}` : '');
+      target.title =
+        `Frame ${usage.frameId}, element ${usage.elementId}. ` +
+        `Required pixels ${usage.targetWidth}×${usage.targetHeight}. Alt: ${usage.altState}.`;
+      target.addEventListener('click', () => highlightUsage(target, usage, resource.url));
+      const usageTags = document.createElement('span');
+      usageTags.className = 'tags usage-tags';
+      appendIssueTags(usageTags, usage.issues);
+      usageRow.append(target, usageTags);
+      details.appendChild(usageRow);
+    }
+    body.appendChild(details);
+  }
 
   const right = document.createElement('div');
   right.className = 'right';
 
   const saving = document.createElement('div');
   saving.className = 'saving';
-  saving.textContent = image.savingBytes > 0 ? `−${humanBytes(image.savingBytes)}` : '✓';
+  saving.textContent =
+    resource.savingBytes > 0 ? `≈−${humanBytes(resource.savingBytes)}` : '✓';
 
   const actions = document.createElement('div');
   actions.className = 'actions';
@@ -294,20 +404,17 @@ function imageRow(image) {
   copyUrl.className = 'icon';
   copyUrl.textContent = 'Copy';
   copyUrl.title = 'Copy the image URL';
-  copyUrl.addEventListener('click', async () => {
-    await navigator.clipboard.writeText(image.url);
-    flash(copyUrl, 'Copied');
-  });
+  copyUrl.addEventListener('click', () => copyText(copyUrl, resource.url));
   actions.appendChild(copyUrl);
 
-  if (!image.isDataUri && image.recommendedFormat !== image.format) {
+  if (!resource.isDataUri && resource.recommendedFormat !== resource.format) {
     const convert = document.createElement('a');
     convert.className = 'icon';
     convert.textContent = 'Convert';
-    // The converter runs in the browser, so it takes a file, not a URL. The
-    // parameters ride along for the day it can fetch one itself.
-    convert.title = `Open the ImageGuide converter. Send this one to ${image.recommendedFormat.toUpperCase()}.`;
-    convert.href = `${CONVERTER_URL}?url=${encodeURIComponent(image.url)}&to=${image.recommendedFormat}`;
+    convert.title =
+      `Open the ImageGuide converter for ${resource.recommendedFormat.toUpperCase()}. ` +
+      'The audited URL is not sent.';
+    convert.href = CONVERTER_URL;
     convert.target = '_blank';
     convert.rel = 'noreferrer';
     actions.appendChild(convert);
@@ -334,71 +441,48 @@ function flash(button, message) {
 }
 
 /**
- * Ask the server for the real size of the images the page could not measure.
+ * Ask the server for a validated response size for images the page could not measure.
  * This needs host access, so we request it only for the origins involved.
  */
-async function measureRealSizes() {
-  const pending = state.report.images.filter((image) => !image.measured && !image.isDataUri);
+async function checkResponseSizes() {
+  const pending = pendingResponseChecks();
   if (!pending.length) return;
 
   const origins = [...new Set(pending.map((image) => originPattern(image.url)).filter(Boolean))];
-  if (!origins.length) return;
+  if (!origins.length || !state.pregrantedOrigins) return;
 
-  const granted = await chrome.permissions.request({ origins });
-  if (!granted) return;
-
-  elements.measure.textContent = 'Measuring…';
   elements.measure.disabled = true;
+  elements.rescan.disabled = true;
+  elements.measure.textContent = 'Checking permission…';
 
-  const byUrl = new Map(state.page.images.map((image) => [image.url, image]));
-  const results = await Promise.allSettled(pending.map((image) => headSize(image.url)));
+  let changed = false;
 
-  results.forEach((result, index) => {
-    if (result.status !== 'fulfilled' || !result.value) return;
-    const record = byUrl.get(pending[index].url);
-    if (!record) return;
-    if (result.value.bytes > 0) record.transferBytes = result.value.bytes;
-    if (result.value.contentType) record.contentType = result.value.contentType;
-  });
-
-  elements.measure.textContent = 'Measure the real sizes';
-  elements.measure.disabled = false;
-  render();
-}
-
-function originPattern(url) {
   try {
-    const { protocol, host } = new URL(url);
-    if (protocol !== 'http:' && protocol !== 'https:') return null;
-    return `${protocol}//${host}/*`;
-  } catch {
-    return null;
+    const byUrl = new Map(state.page.resources.map((resource) => [resource.url, resource]));
+    const results = await measureResources(
+      pending,
+      state.pregrantedOrigins,
+      (done, total) => {
+        elements.measure.textContent = `Checking ${done}/${total}…`;
+      }
+    );
+
+    results.forEach((result, index) => {
+      if (!result) return;
+      const record = byUrl.get(pending[index].url);
+      if (!record) return;
+      record.transferBytes = result.bytes;
+      record.contentType = result.contentType;
+      record.measurementSource = result.source;
+      record.measurementConfidence = result.confidence;
+    });
+    changed = true;
+  } finally {
+    elements.measure.textContent = 'Check response sizes';
+    elements.measure.disabled = false;
+    elements.rescan.disabled = false;
   }
-}
-
-async function headSize(url) {
-  const read = (response) => ({
-    bytes: Number(response.headers.get('content-length')) || 0,
-    contentType: response.headers.get('content-type') || ''
-  });
-
-  const head = await fetch(url, { method: 'HEAD', credentials: 'omit', cache: 'force-cache' });
-  const fromHead = read(head);
-  if (fromHead.bytes > 0) return fromHead;
-
-  // Some servers ignore HEAD. Ask for one byte and read the total from the range.
-  const ranged = await fetch(url, {
-    method: 'GET',
-    credentials: 'omit',
-    cache: 'force-cache',
-    headers: { Range: 'bytes=0-0' }
-  });
-  const contentRange = ranged.headers.get('content-range');
-  const total = contentRange ? Number(contentRange.split('/')[1]) : 0;
-  return {
-    bytes: Number.isFinite(total) ? total : 0,
-    contentType: ranged.headers.get('content-type') || ''
-  };
+  if (changed) render();
 }
 
 async function copyText(button, text) {
@@ -414,23 +498,24 @@ elements.rescan.addEventListener('click', scan);
 
 elements.measure.addEventListener('click', async () => {
   try {
-    await measureRealSizes();
+    await checkResponseSizes();
   } catch {
     // Chrome refused the host access, or the tab went away. Let the user retry.
-    elements.measure.textContent = 'Measure the real sizes';
+    elements.measure.textContent = 'Check response sizes';
     elements.measure.disabled = false;
+    elements.rescan.disabled = false;
   }
 });
 
 elements.sort.addEventListener('change', () => {
   state.sort = elements.sort.value;
   saveSettings();
-  renderImages();
+  renderResources();
 });
 
 elements.search.addEventListener('input', () => {
   state.search = elements.search.value;
-  renderImages();
+  renderResources();
 });
 
 elements.copy.addEventListener('click', () =>
@@ -440,5 +525,15 @@ elements.copy.addEventListener('click', () =>
 elements.copyJson.addEventListener('click', () =>
   copyText(elements.copyJson, buildJsonReport(state.page, state.report, new Date().toISOString()))
 );
+
+elements.openAudit.addEventListener('click', async () => {
+  if (!state.tabId || !state.watchKey) return;
+  const query = new URLSearchParams({
+    tab: String(state.tabId),
+    watch: state.watchKey
+  });
+  await chrome.tabs.create({ url: chrome.runtime.getURL(`audit/audit.html?${query}`) });
+  window.close();
+});
 
 loadSettings().then(scan);

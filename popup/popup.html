@@ -27,12 +27,16 @@
 
     <main id="results" hidden>
       <section class="summary">
-        <div class="grade" id="grade">A</div>
+        <div class="grade-block">
+          <div class="grade" id="grade" aria-label="Delivery grade">A</div>
+          <span>Delivery</span>
+        </div>
         <div class="summary-figures">
-          <p class="headline"><strong id="saving">0 kB</strong> to save</p>
+          <p class="headline"><strong id="saving">0 kB</strong> estimated opportunity</p>
           <p class="muted">
-            <span id="count">0</span> images · <span id="total">0 kB</span> now ·
-            <span id="optimised">0 kB</span> after
+            <span id="count">0</span> resources / <span id="usage-count">0</span> usages ·
+            <span id="total">0 kB</span> now ·
+            ≈<span id="optimised">0 kB</span> after
           </p>
         </div>
       </section>
@@ -42,13 +46,17 @@
       </div>
 
       <p class="split" id="split">
-        Resize saves <strong id="resize-saving">0 kB</strong> ·
-        Modern format saves <strong id="format-saving">0 kB</strong>
+        Resize opportunity <strong id="resize-saving">0 kB</strong> ·
+        Format opportunity <strong id="format-saving">0 kB</strong>
       </p>
 
+      <p class="split" id="confidence">0% of modelled weight measured · 0 markup findings</p>
+      <p class="split" id="vitals">LCP and CLS evidence unavailable</p>
+
       <p id="measure-note" class="note" hidden>
-        <span id="estimated-count">0</span> sizes are estimates. Cross-origin files hide their size.
-        <button id="measure" class="link" type="button">Measure the real sizes</button>
+        Provisional: <span id="estimated-count">0</span> sizes use the model. Cross-origin files hide their size.
+        <button id="measure" class="link" type="button">Check response sizes</button>
+        (up to 100 at a time)
       </p>
 
       <p id="truncate-note" class="note warn-note" hidden>
@@ -56,9 +64,10 @@
       </p>
 
       <p id="buffer-note" class="note warn-note" hidden>
-        The page loaded more resources than Chrome keeps timings for, so more sizes are estimates.
-        Reload the page for a full measurement.
+        Chrome may have filled its Resource Timing buffer, so more sizes may use the model.
       </p>
+
+      <p id="coverage-note" class="note warn-note" hidden></p>
 
       <nav class="filters" id="filters"></nav>
 
@@ -77,7 +86,7 @@
         <select id="sort" class="sort">
           <option value="saving">Saving</option>
           <option value="bytes">Size</option>
-          <option value="wasted">Wasted pixels</option>
+          <option value="wasted">Resize opportunity</option>
           <option value="name">Name</option>
         </select>
       </div>
@@ -87,6 +96,7 @@
       <p id="list-note" class="note" hidden></p>
 
       <footer class="footer">
+        <button id="open-audit" class="full-audit" type="button">Open full audit</button>
         <a href="https://www.imageguide.dev" target="_blank" rel="noreferrer">imageguide.dev</a>
         <span class="footer-actions">
           <button id="copy-json" class="ghost" type="button" title="Copy the report as JSON">JSON</button>

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ImageGuide full audit</title>
+    <link rel="stylesheet" href="audit.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">IG</span>
+        <div>
+          <p class="eyebrow">ImageGuide</p>
+          <h1>Image evidence ledger</h1>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button id="show-page" class="button secondary" type="button">Show page</button>
+        <button id="rescan" class="button" type="button">Rescan now</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="state-loading" class="state">
+        <div class="spinner" aria-hidden="true"></div>
+        <p>Reading browser evidence…</p>
+      </section>
+
+      <section id="state-error" class="state error" hidden>
+        <h2>Audit access ended</h2>
+        <p id="error-message">Open the extension popup on the page again.</p>
+      </section>
+
+      <section id="results" hidden>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Audited page</p>
+            <h2 id="page-title">Page</h2>
+            <p id="page-url" class="page-url"></p>
+          </div>
+          <div class="watch-control">
+            <span id="watch-status" class="watch-status">Watching page changes</span>
+            <button id="toggle-watch" class="button secondary small" type="button">Pause watch</button>
+          </div>
+        </div>
+
+        <section class="ledger" aria-label="Audit outcomes">
+          <article class="outcome measured">
+            <span class="outcome-label">Delivery</span>
+            <strong id="grade" class="grade">?</strong>
+            <span id="delivery-detail">No measured resources</span>
+          </article>
+          <article class="outcome estimated">
+            <span class="outcome-label">Estimated opportunity</span>
+            <strong id="saving">0 B</strong>
+            <span id="saving-detail">Resize 0 B · Format 0 B</span>
+          </article>
+          <article class="outcome markup">
+            <span class="outcome-label">Markup</span>
+            <strong id="markup-count">0</strong>
+            <span id="usage-detail">0 resources · 0 usages</span>
+          </article>
+          <article class="outcome confidence">
+            <span class="outcome-label">Measured weight</span>
+            <strong id="confidence">0%</strong>
+            <span id="confidence-detail">0 of 0 resource sizes</span>
+          </article>
+        </section>
+
+        <section class="vitals" aria-label="Browser vitals">
+          <article>
+            <span class="vital-label">Largest Contentful Paint</span>
+            <strong id="lcp-value">Not captured</strong>
+            <span id="lcp-detail">Buffered browser evidence</span>
+          </article>
+          <article>
+            <span class="vital-label">Cumulative Layout Shift</span>
+            <strong id="cls-value">Not captured</strong>
+            <span id="cls-detail">Browser-attributed shifts</span>
+          </article>
+          <article>
+            <span class="vital-label">Scan</span>
+            <strong id="scan-value">0 ms</strong>
+            <span id="scan-detail">0 elements checked</span>
+          </article>
+        </section>
+
+        <div id="warnings" class="warnings" hidden></div>
+
+        <section class="toolbar" aria-label="Audit controls">
+          <label>
+            <span>Search</span>
+            <input id="search" type="search" placeholder="File name or URL" />
+          </label>
+          <label>
+            <span>Finding</span>
+            <select id="filter"><option value="all">All findings</option></select>
+          </label>
+          <label>
+            <span>Sort</span>
+            <select id="sort">
+              <option value="saving">Opportunity</option>
+              <option value="bytes">Response size</option>
+              <option value="wasted">Resize opportunity</option>
+              <option value="name">Name</option>
+            </select>
+          </label>
+          <div class="toolbar-actions">
+            <button id="measure" class="button secondary" type="button">Check response sizes</button>
+            <button id="copy-json" class="button secondary" type="button">Copy JSON</button>
+            <button id="copy-report" class="button secondary" type="button">Copy Markdown</button>
+          </div>
+        </section>
+
+        <div class="resource-heading">
+          <div>
+            <p class="eyebrow">Resource evidence</p>
+            <h2>One transfer, every usage</h2>
+          </div>
+          <p id="result-count">0 resources</p>
+        </div>
+
+        <section id="resources" class="resources" aria-live="polite"></section>
+        <p id="empty-filter" class="empty-filter" hidden>No resource matches these controls.</p>
+      </section>
+    </main>
+
+    <script type="module" src="audit.js"></script>
+  </body>
+</html>
