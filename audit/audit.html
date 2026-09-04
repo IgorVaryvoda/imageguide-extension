@@ -47,8 +47,8 @@
 
         <section class="ledger" aria-label="Audit outcomes">
           <article class="outcome measured">
-            <span class="outcome-label">Delivery</span>
-            <strong id="grade" class="grade">?</strong>
+            <span class="outcome-label">Delivery grade retired</span>
+            <strong id="grade" class="grade">n/a</strong>
             <span id="delivery-detail">No measured resources</span>
           </article>
           <article class="outcome estimated">
@@ -87,7 +87,7 @@
         </section>
 
         <div id="warnings" class="warnings" hidden></div>
-
+        <p id="handoff-note" class="handoff-note" hidden></p>
         <section class="toolbar" aria-label="Audit controls">
           <label>
             <span>Search</span>
@@ -123,7 +123,7 @@
 
         <section id="resources" class="resources" aria-live="polite"></section>
         <p id="empty-filter" class="empty-filter" hidden>No resource matches these controls.</p>
-      </section>
+        <button id="show-more" class="button secondary" type="button" hidden>Show more</button>
     </main>
 
     <script type="module" src="audit.js"></script>

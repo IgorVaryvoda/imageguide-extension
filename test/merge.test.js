@@ -259,4 +259,111 @@ describe('mergeFrames', () => {
     assert.deepEqual(empty.usages, []);
     assert.equal(empty.pageUrl, '');
   });
+
+  it('agrees with the shared source-precedence helper on every ordering', async () => {
+    const { shouldApplyMeasurement } = await import('../lib/measure.js');
+    const sources = [
+      'resource-timing-encoded',
+      'resource-timing-transfer',
+      'inline',
+      'content-length',
+      'content-range',
+      ''
+    ];
+    for (const first of sources) {
+      for (const second of sources) {
+        for (const order of [[first, second], [second, first]]) {
+          const [earlier, later] = order;
+          const page = mergeFrames([
+            frame(
+              0,
+              [
+                resource('r1', 'https://cdn.test/a.jpg', {
+                  transferBytes: 800,
+                  measurementSource: earlier,
+                  measurementConfidence: 'high'
+                })
+              ],
+              [usage('u1', 'r1')]
+            ),
+            frame(
+              1,
+              [
+                resource('r1', 'https://cdn.test/a.jpg', {
+                  transferBytes: 900,
+                  measurementSource: later,
+                  measurementConfidence: 'high'
+                })
+              ],
+              [usage('u1', 'r1')]
+            )
+          ]);
+          const merged = page.resources[0];
+          const expected = shouldApplyMeasurement(
+            { transferBytes: 800, measurementSource: earlier },
+            { transferBytes: 900, measurementSource: later }
+          )
+            ? { bytes: 900, source: later }
+            : { bytes: 800, source: earlier };
+          assert.equal(merged.transferBytes, expected.bytes, `${earlier} vs ${later}`);
+          assert.equal(merged.measurementSource, expected.source, `${earlier} vs ${later}`);
+        }
+      }
+    }
+  });
+
+  it('keeps a rescan HEAD result from overwriting proven format evidence', () => {
+    const page = mergeFrames([
+      frame(
+        0,
+        [
+          resource('r1', 'https://cdn.test/a.jpg', {
+            transferBytes: 0,
+            measurementSource: '',
+            contentType: 'image/jpeg'
+          })
+        ],
+        [usage('u1', 'r1')]
+      ),
+      frame(
+        1,
+        [
+          resource('r1', 'https://cdn.test/a.jpg', {
+            transferBytes: 1200,
+            measurementSource: 'content-length',
+            measurementConfidence: 'medium',
+            contentType: 'image/png'
+          })
+        ],
+        [usage('u1', 'r1')]
+      )
+    ]);
+    const merged = page.resources[0];
+    assert.equal(merged.transferBytes, 1200);
+    assert.equal(merged.measurementSource, 'content-length');
+    assert.equal(
+      merged.contentType,
+      'image/jpeg',
+      'a HEAD response does not prove the page loaded that variant'
+    );
+  });
+
+  it('lets late resource-timing evidence beat an earlier HEAD result', () => {
+    const head = resource('r1', 'https://cdn.test/a.jpg', {
+      transferBytes: 1200,
+      measurementSource: 'content-length',
+      measurementConfidence: 'medium'
+    });
+    const timing = resource('r1', 'https://cdn.test/a.jpg', {
+      transferBytes: 900,
+      measurementSource: 'resource-timing-encoded',
+      measurementConfidence: 'high'
+    });
+    const page = mergeFrames([
+      frame(0, [head], [usage('u1', 'r1')]),
+      frame(1, [timing], [usage('u1', 'r1')])
+    ]);
+    assert.equal(page.resources[0].transferBytes, 900);
+    assert.equal(page.resources[0].measurementSource, 'resource-timing-encoded');
+  });
 });

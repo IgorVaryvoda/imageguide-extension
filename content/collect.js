@@ -523,6 +523,10 @@ export function collectImages(
     return resource;
   };
 
+  // Scan-local serialization labels only: `r1`/`u1` ids and auditor mark
+  // values identify rows within one report. The UI wave must key continuity
+  // on frame-document identity plus resource URL plus the weak element path
+  // recorded as `stableKey` on each usage, never on these labels.
   const elementIdOf = (element) => {
     let id = elementIds.get(element);
     if (!id) {
@@ -532,6 +536,39 @@ export function collectImages(
       element.setAttribute(markAttribute, id);
     }
     return id;
+  };
+
+  // Weak element identity hook: a short ancestor path that survives rescans
+  // while the surrounding structure is unchanged, and changes (correctly
+  // invalidating continuity) when the element moves. Best effort only.
+  const domPathOf = (element) => {
+    try {
+      const parts = [];
+      let node = element;
+      for (let depth = 0; node && depth < 8; depth += 1) {
+        const parent = node.parentElement;
+        let index = -1;
+        if (parent && parent.children) {
+          try { index = Array.prototype.indexOf.call(parent.children, node); } catch { index = -1; }
+        }
+        parts.push(`${node.tagName || node.localName || '?'}[${index}]`);
+        node = parent;
+      }
+      return parts.reverse().join('/');
+    } catch {
+      return '';
+    }
+  };
+  // Frame-document identity for stable UI keys. Read lazily: the tracker is
+  // owned by the observer and may be replaced between scans.
+  const usageDocumentToken = () => {
+    try {
+      const tracker = watchKey ? globalThis[watchKey] : null;
+      if (tracker?.documentToken) return String(tracker.documentToken);
+      return String(performance.timeOrigin || 0);
+    } catch {
+      return '';
+    }
   };
 
   const addUsage = (url, element, kind, fields = {}, dimensions = {}) => {
@@ -577,11 +614,11 @@ export function collectImages(
       densityCorrectedWidth: 0,
       densityCorrectedHeight: 0,
       selectedCandidateDescriptor: '',
-      sourceDimensionConfidence: dimensions.confidence || 'unknown',
-      isLcp: false,
       layoutShiftCount: 0,
       layoutShiftScore: 0,
-      ...fields
+      ...fields,
+      documentToken: usageDocumentToken(),
+      stableKey: [usageDocumentToken(), url, kind, fields.cssProperty || '', domPathOf(element)].join('|')
     });
   };
 
@@ -802,6 +839,7 @@ export function collectImages(
       ? {
           documentToken: String(performance.timeOrigin || 0),
           generation: tracker.generation,
+          revision: tracker.revision ?? tracker.generation,
           mutationCount: tracker.mutationCount,
           lastMutationTime: tracker.lastMutationTime
         }

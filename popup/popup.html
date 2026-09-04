@@ -8,7 +8,10 @@
   <body>
     <header class="header">
       <h1>Image Auditor</h1>
-      <button id="rescan" class="ghost" type="button" title="Scan the page again">Rescan</button>
+      <span class="header-actions">
+        <button id="open-audit-top" class="ghost" type="button" title="Open the full audit without losing completed checks">Full audit</button>
+        <button id="rescan" class="ghost" type="button" title="Scan the page again">Rescan</button>
+      </span>
     </header>
 
     <section id="state-loading" class="state">
@@ -28,8 +31,8 @@
     <main id="results" hidden>
       <section class="summary">
         <div class="grade-block">
-          <div class="grade" id="grade" aria-label="Delivery grade">A</div>
-          <span>Delivery</span>
+          <div class="grade" id="grade" data-grade="retired" aria-label="Delivery grade retired">n/a</div>
+          <span>Grade retired</span>
         </div>
         <div class="summary-figures">
           <p class="headline"><strong id="saving">0 kB</strong> estimated opportunity</p>
