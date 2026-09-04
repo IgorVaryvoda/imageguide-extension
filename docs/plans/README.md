@@ -10,10 +10,10 @@ This index is the single source of truth for plan status and execution order.
 
 | Order | Plan | Status | Implementation slices | Depends on |
 | --- | --- | --- | --- | --- |
-| 1 | [Measurement jobs and temporary permissions](01-measurement-lifecycle.md) | Planned | 01a: attempts, cancellation and stale-result guards; 01b: permission lifetime proof and recovery | None |
-| 2 | [Live evidence and inspection continuity](02-live-audit-continuity.md) | Planned | 02a: observation and stable identity; 02b: incremental rendering and performance | 01a for safe concurrent checks |
-| 3 | [Evidence, scoring and report integrity](03-evidence-and-reporting.md) | Planned | 03a: confidence and grade contract; 03b: export parity and compatibility | 01a measurement result contract |
-| 4 | [Action workflow and local verification](04-action-workflow.md) | Planned | 04a: popup/full-audit handoff and actions | 01, 02, 03 |
+| 1 | [Measurement jobs and temporary permissions](01-measurement-lifecycle.md) | Done (working tree; E2E/browser-dialog proof still to run) | 01a: attempts, cancellation and stale-result guards; 01b: permission lifetime proof and recovery | None |
+| 2 | [Live evidence and inspection continuity](02-live-audit-continuity.md) | Done (working tree; installed-extension continuity proof still to run) | 02a: observation and stable identity; 02b: incremental rendering and performance | 01a for safe concurrent checks |
+| 3 | [Evidence, scoring and report integrity](03-evidence-and-reporting.md) | Done (working tree) | 03a: confidence and grade contract; 03b: export parity and compatibility | 01a measurement result contract |
+| 4 | [Action workflow and local verification](04-action-workflow.md) | Done (working tree; E2E handoff proof still to run) | 04a: popup/full-audit handoff and actions | 01, 02, 03 |
 | Later | [Baseline comparison experiment](04-action-workflow.md#04b-deferred-baseline-comparison) | Deferred | 04b: explicit, local before/after comparison | Trust release accepted; observed user need |
 
 Implement these as separate reviewable PRs, with regression tests in the same PR as each
@@ -88,5 +88,27 @@ Trust-release acceptance requires all of the following:
   [privacy policy](../../store/privacy-policy.md), canonical
   [store description](../../store/description.md), and real extension screenshots.
 
+## Implementation evidence (working tree, 2026-09-04)
+
+- Passed: `node scripts/verify.mjs`, `npm run lint`, and unit `node --test`
+  across `test/measure.test.js`, `test/collect.test.js`, `test/merge.test.js`,
+  `test/observe.test.js`, `test/extension-measure.test.js`, `test/report.test.js`,
+  `test/analyze.test.js`, `test/handoff.test.js` — 147 pass, 0 fail, 7 skipped
+  (explicit 01b manual permission-lifetime fixtures with recorded steps).
+- Changed runtime behavior is reflected in `README.md`, `store/privacy-policy.md`
+  and `store/description.md` in the same tree, with recaptured extension
+  screenshots (`images/screens/`, `store/screenshot-*.png`).
+- Passed: `npm run test:e2e` (5/5) on system Chromium 152 (Arch Linux) via
+  `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium`: installed-extension proof covers
+  audit evidence/usage retention, live refresh on DOM change, viewport/scroll
+  behaviour, timing-buffer saturation, scan caps and live HEAD/range/auth/status/
+  redirect checks.
+- Not run: real permission-dialog lifetime cases (grant/denial/teardown inspected
+  from an independent context) and hosted CI. The 7 skipped unit fixtures record
+  the manual steps. Until executed, that gate is Not run, not Passed.
+- 01b: no background worker or storage journal was added — the lifetime proof
+  comes first, and the current architecture retains document-owned cleanup with
+  a recorded pending-cleanup block. A retained grant remains an unproven risk,
+  not a claimed reproduced leak.
 A docs-only plan PR requires link/diff review, not a pretend application test pass. It must
 not change runtime files, dependencies, manifest permissions or public availability claims.

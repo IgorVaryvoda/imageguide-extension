@@ -2,9 +2,9 @@ ImageGuide inspects common image resources on the page you are viewing and ranks
 
 Click the icon to see three separate results:
 
-• Delivery efficiency — a grade based only on resources whose size the browser reported or you checked.
+• Estimated opportunity — heuristic resize and format savings, never promised final weights.
 • Markup findings — cautious checks for missing alt attributes, missing dimensions, current viewport loading state, and responsive-image opportunities.
-• Confidence — the share of modelled image weight backed by measured resource sizes.
+• Coverage — measured, checked-header, estimated, unknown and inline counts, so partial evidence never reads as a page-wide verdict.
 
 WHAT IT REPORTS
 
@@ -41,11 +41,11 @@ ABOUT THE NUMBERS
 
 Resource Timing may expose encodedBodySize or transferSize; ImageGuide records which one it used. Cross-origin responses often hide both. In that case, ImageGuide labels a low-confidence model.
 
-Press "Check response sizes" to request temporary access only to the relevant image origins. Each click checks at most 100 resources with up to six concurrent requests and an eight-second timeout. ImageGuide accepts only a successful image HEAD response or a validated 206 image range response, cancels response bodies, omits credentials, and removes permissions granted for that check. These response sizes may still differ from the page's original negotiated request.
+Press "Check response sizes" to request temporary access only to the relevant image origins. Each click checks at most 100 resources with up to six concurrent requests and an eight-second timeout. ImageGuide accepts only a successful image HEAD response or a validated 206 image range response, cancels response bodies, omits credentials, and removes permissions granted for that check. Failed checks record an attempt outcome and never silently reset progress; cancelling keeps completed measurements, and retry always needs another click. These response sizes may still differ from the page's original negotiated request.
 
 PRIVACY
 
-No audit report is automatically transmitted to ImageGuide, and the interface does not load remote thumbnails. Optional response-size checks make the requests described above. User-clicked links open ImageGuide pages, but the converter link does not contain the audited image URL. There is no account or analytics. Only the last filter and sort choice are stored locally.
+No audit report is automatically transmitted to ImageGuide, and the interface does not load remote thumbnails. Optional response-size checks make the requests described above. User-clicked links open ImageGuide pages, but the converter link does not contain the audited image URL. There is no account or analytics. Only the last filter and sort choice are stored locally; opening the full audit from the popup additionally holds a one-use measurements handoff in extension session storage for up to 60 seconds, consumed and deleted on open.
 
 OPEN SOURCE
 

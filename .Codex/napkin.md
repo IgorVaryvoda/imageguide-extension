@@ -20,7 +20,12 @@
 | 2026-08-30 | self | Audit `.state { display: grid }` overrode the visual effect of the `hidden` attribute | Add a global `[hidden] { display: none !important }` rule and inspect generated captures |
 | 2026-08-30 | environment | `apply_patch` cannot delete a binary PNG because it must decode the file as UTF-8 | Use an explicit validated removal only for generated binary artifacts |
 | 2026-08-30 | environment | Raw CDP metrics override is also unsupported on the special extension-popup target | Capture only the real visible popup viewport, then pad the generated store card |
-| 2026-08-30 | self | ImageMagick padded a popup by repeating edge pixels because the background was applied too late | Set the background before `-extent` and inspect the composed store image |
+| 2026-09-04 | self | `node --test "test/*.test.js"` quoted globs fail on Node 20 and Windows CI runners | List test files explicitly in package.json scripts; no quoted globs |
+| 2026-09-04 | self | Passed `detail: undefined` as a third scripting arg; Chrome rejected the injection as unserializable | Build injected arg arrays without undefined entries |
+| 2026-09-04 | self | Carried popup filter/search into the audit handoff and narrowed the ledger | Handoff carries measurements plus sort order only; popup narrowing never follows |
+| 2026-09-04 | self | Relied on the `toggle` event for lazy usage rows; programmatic `details.open` mounts nothing | Expand groups with real summary clicks in tests; keep lazy build in the toggle handler |
+| 2026-09-04 | self | Called `setViewport` on the extension popup target during captures | Wrap capture viewport changes with a natural-viewport fallback |
+| 2026-09-04 | self | Edit ranges drifted after earlier hunks and ate neighboring lines repeatedly | Re-read the touched region after every edit before issuing the next hunk |
 
 ## User Preferences
 - Preserve the dependency-free browser-extension architecture; fix correctness at the data and semantics layer.

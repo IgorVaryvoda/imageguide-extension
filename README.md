@@ -38,8 +38,11 @@ It flags these problems:
 | Responsive-image opportunity | A confirmed oversized raster has no `srcset`; verify server negotiation too. |
 | Default sizes mismatch | A width-descriptor `srcset` omits `sizes` while its slot is notably narrower than the viewport. |
 
-The delivery grade uses measured resources only. Markup findings are counted separately,
-and the popup states what share of the modelled image weight was measured.
+Opportunity and coverage lead the summary: estimated resize and format savings are
+labelled heuristic estimates, and the popup states measured, checked-header,
+estimated, unknown and inline counts separately. The A–F delivery grade is retired
+(report schema v4 carries `grade: null`) because fixed-ratio model arithmetic is not
+calibrated evidence. Markup findings are counted separately.
 
 ## What it scans
 
@@ -73,12 +76,14 @@ because the totals are then a lower bound.
 | Sort | Order by opportunity, response size, resize opportunity, or name. |
 | Resource or usage | Scroll to that element in the page and outline it. |
 | Copy | Copy the image URL. |
-| Convert | Open the ImageGuide converter without sending the audited image URL. |
+| Open converter | Open the ImageGuide converter without sending the audited image URL. |
 | Copy report | Copy a Markdown report for a pull request or a ticket. |
 | JSON | Copy a JSON report for a build step. |
-| Open full audit | Keep a persistent resource ledger open with usage evidence, LCP, CLS, and live page watching. |
+| Open full audit | Keep a persistent resource ledger open with usage evidence, LCP, CLS, and live page watching. The header button stays reachable without scrolling the list, and completed response checks travel with a one-use handoff. |
 
-The popup remembers the filter and the sort between sessions.
+The popup remembers the filter and the sort between sessions. The full audit keeps at
+most 100 resource cards mounted with a Show more action; usage rows mount on expansion,
+and expanded groups, focus and scroll survive live refreshes.
 
 ## Install from source
 
@@ -98,7 +103,7 @@ The extension needs no build step. It is plain ES modules.
 | --- | --- |
 | `activeTab` | Read the images of the page you are on, only after you click the icon. |
 | `scripting` | Inject the packaged observer, collector, and highlighter into that page. |
-| `storage` | Keep your filter and sort choice between sessions. |
+| `storage` | Keep your filter and sort choice between sessions, plus the one-use popup-to-audit measurements handoff (session storage, 60-second expiry, consumed on open). |
 | `*://*/*` (optional) | Check response-size headers for cross-origin images. |
 
 The host permission is **optional**. Chrome asks for it only when you press
@@ -123,7 +128,10 @@ filled. A page can resize or clear that buffer, so the popup does not claim cert
 
 Press **Check response sizes** to try a validated image `Content-Length`, then a `206`
 `Content-Range` fallback. Six workers run at once, each check times out, and response bodies
-are cancelled. One click checks at most 100 resources. These checks omit credentials and may
+are cancelled. One click checks at most 100 resources. Failed checks record an attempt
+outcome without resetting progress, cancelling keeps completed measurements, and retry
+always needs another click. A rescan or navigation aborts the run and discards late
+results. These checks omit credentials and may
 not reproduce the request context or variant that the page originally loaded.
 
 ## Layout
@@ -132,14 +140,15 @@ not reproduce the request context or variant that the page originally loaded.
 manifest.json          Manifest V3, no background worker
 lib/constants.js       Values the popup passes to the injected functions
 lib/format.js          Format detection and byte estimation (pure)
-lib/analyze.js         Issue rules, saving model, page grade (pure)
+lib/analyze.js         Issue rules, saving model, coverage (pure)
 lib/merge.js           Joins the frame results into one page (pure)
 lib/measure.js         Validates and bounds optional response-size checks
 lib/report.js          Sort, filter, Markdown, and JSON output (pure)
+lib/handoff.js         One-shot popup-to-audit payload contract (pure)
 content/collect.js     Runs in the page, gathers resources and every supported usage
 content/observe.js     Buffers LCP, layout shifts, and relevant page mutations
 content/highlight.js   Runs in the page, scrolls to and outlines one image
-extension/             Shared tab orchestration and temporary permission handling
+extension/             Shared tab orchestration, temporary permission handling, session handoff
 popup/                 Instant summary and compact resource list
 audit/                 Persistent full-audit tab and live evidence ledger
 test/                  Unit and real-Chromium fixture tests
