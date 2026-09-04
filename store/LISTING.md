@@ -5,7 +5,7 @@ https://chrome.google.com/webstore/devconsole.
 
 ## Package
 
-`dist/imageguide-extension-0.4.0.zip` — build it with `npm run zip`.
+`dist/imageguide-extension-0.5.0.zip` — build it with `npm run zip`.
 
 ## Product details
 
@@ -44,7 +44,7 @@ copy in one file prevents the listing and repository from drifting apart.
 | Small promo tile | `store/promo-small-440x280.png` |
 | Marquee promo tile | `store/promo-marquee-1400x560.png` |
 
-The five screenshots were refreshed from the 0.4.0 extension in Chromium against the
+The five screenshots were refreshed from the 0.5.0 extension in Chromium against the
 checked-in browser-grade fixture. Four show the popup and one shows the persistent full
 audit. The interface, browser-selected candidates, LCP, and CLS evidence are real; nothing
 is mocked.
@@ -107,7 +107,7 @@ https://www.imageguide.dev/privacy
 ```
 
 [`privacy-policy.md`](privacy-policy.md) is the source copy. Publish that content at the URL
-above before submitting 0.4.0; repository edits alone do not update the live policy.
+above before submitting 0.5.0; repository edits alone do not update the live policy.
 
 ## Distribution
 
