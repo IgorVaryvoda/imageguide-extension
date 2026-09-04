@@ -153,6 +153,11 @@ store/                 Web Store and social art, at the exact sizes each needs
 `lib/` holds no extension API calls, and the injected collectors hold none either, so the
 rules are testable in plain Node.
 
+## Development plans
+
+See the [remediation plan index](docs/plans/README.md) for the prioritized correctness,
+privacy, live-audit and workflow work. These are planned changes, not implemented features.
+
 ## Test
 
 ```bash
