@@ -290,6 +290,14 @@ main {
   color: #7c3e09;
   font-size: 12px;
 }
+.handoff-note {
+  margin: 14px 0 0;
+  padding: 9px 12px;
+  border-left: 3px solid var(--blue);
+  border-radius: 0 6px 6px 0;
+  background: rgba(37, 99, 235, 0.08);
+  font-size: 12px;
+}
 
 .toolbar {
   display: grid;

@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdir } from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
 import { once } from 'node:events';
 import { dirname, extname, resolve, sep } from 'node:path';
@@ -10,6 +9,7 @@ import { after, afterEach, before, describe, it } from 'node:test';
 import puppeteer, { PredefinedNetworkConditions } from 'puppeteer';
 
 import { measureImageResponse } from '../../lib/measure.js';
+import { captureStoreSurfaces } from '../../scripts/capture-screens.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const MIME = {
@@ -184,8 +184,15 @@ async function openAudit(popup) {
 }
 
 async function auditSnapshot(audit) {
+  // Usage rows mount on expansion, as for a keyboard/mouse user: open every
+  // group with a real toggle, then let the toggle handlers mount the rows.
+  await audit.evaluate(async () => {
+    for (const summary of document.querySelectorAll('details:not([open]) > summary')) {
+      summary.click();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
   return audit.evaluate(() => {
-    for (const details of document.querySelectorAll('details')) details.open = true;
     const resources = [...document.querySelectorAll('.resource')].map((card) => ({
       url: card.querySelector('.resource-url')?.textContent || '',
       text: card.textContent,
@@ -202,43 +209,10 @@ async function auditSnapshot(audit) {
   });
 }
 
-async function captureStoreSurfaces(popup, audit = null) {
+async function captureIfRequested(popup, audit = null) {
   const requested = process.env.IMAGEGUIDE_CAPTURE_DIR;
   if (!requested) return;
-  const directory = resolve(root, requested);
-  await mkdir(directory, { recursive: true });
-  if (popup) {
-    const screenshot = async (file) => {
-      const viewport = await popup.evaluate(() => ({ y: scrollY, height: innerHeight }));
-      await popup.screenshot({
-        path: resolve(directory, file),
-        clip: { x: 0, y: viewport.y, width: 436, height: Math.min(493, viewport.height) },
-        captureBeyondViewport: false
-      });
-    };
-    await popup.evaluate(() => scrollTo(0, 0));
-    await screenshot('01-summary.png');
-    await popup.evaluate(() => scrollTo(0, document.body.scrollHeight));
-    await screenshot('02-list.png');
-    await popup.evaluate(() => {
-      scrollTo(0, 0);
-      const chip = [...document.querySelectorAll('#filters button')]
-        .find((button) => button.textContent.includes('Missing alt'));
-      chip?.click();
-    });
-    await screenshot('03-filter.png');
-    await popup.evaluate(() => {
-      document.querySelector('#filters button')?.click();
-      const search = document.getElementById('search');
-      search.value = 'shared=1';
-      search.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    await screenshot('04-search.png');
-  }
-  if (audit) {
-    await audit.evaluate(() => scrollTo(0, 0));
-    await audit.screenshot({ path: resolve(directory, '05-actions.png') });
-  }
+  await captureStoreSurfaces(popup, audit, resolve(root, requested));
 }
 
 describe('ImageGuide extension in Chromium', { timeout: 120000 }, () => {
@@ -291,11 +265,11 @@ describe('ImageGuide extension in Chromium', { timeout: 120000 }, () => {
     assert.equal(await popup.$$eval('img', (images) => images.length), 0, 'popup must not refetch thumbnails');
     assert.match(await popup.$eval('#count', (node) => node.textContent), /^\d+$/);
     assert.match(await popup.$eval('#vitals', (node) => node.textContent), /LCP .+ · CLS/);
-    await captureStoreSurfaces(popup);
+    await captureIfRequested(popup);
 
     const audit = await openAudit(popup);
     const snapshot = await auditSnapshot(audit);
-    await captureStoreSurfaces(null, audit);
+    await captureIfRequested(null, audit);
     assert.match(snapshot.lcp, /^\d+\.\d{2} s$/);
     assert.notEqual(snapshot.cls, 'Unsupported');
     assert.ok(Number(snapshot.cls) > 0, `expected buffered layout shift, got ${snapshot.cls}`);
@@ -329,7 +303,7 @@ describe('ImageGuide extension in Chromium', { timeout: 120000 }, () => {
     ]) {
       assert.ok(snapshot.usageKinds.includes(kind), `missing ${kind} usage`);
     }
-    assert.match(snapshot.body, /canvas elements were counted/);
+    assert.match(snapshot.body, /canvas element\(s\) were counted/);
     assert.match(snapshot.body, /Browser LCP/);
     assert.match(snapshot.body, /Shift attribution/);
 

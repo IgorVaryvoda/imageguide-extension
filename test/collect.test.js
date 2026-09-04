@@ -612,4 +612,69 @@ describe('collectImages', () => {
     assert.equal(result.pageUrl, 'https://example.com/shop');
     assert.deepEqual(result.viewport, { width: 375, height: 667, dpr: 3 });
   });
+  it('keys usages by document, URL, kind, and element path', () => {
+    const result = scan(
+      {
+        body: body(
+          new FakeImage({ attributes: { src: '/shared.jpg' } }),
+          new FakeImage({ attributes: { src: '/shared.jpg', alt: 'Second' } })
+        )
+      },
+      {
+        watchKey: '__imageguide_test_watch_identity',
+        watchState: {
+          documentToken: 'tok-1',
+          generation: 3,
+          revision: 5,
+          mutationCount: 1,
+          lastMutationTime: 7
+        }
+      }
+    );
+
+    assert.equal(result.usages.length, 2);
+    for (const usage of result.usages) {
+      assert.equal(usage.documentToken, 'tok-1');
+      assert.ok(usage.stableKey.startsWith('tok-1|https://example.com/shared.jpg|img||'));
+    }
+    // Same URL, same kind: the weak element path keeps siblings distinct.
+    assert.notEqual(result.usages[0].stableKey, result.usages[1].stableKey);
+    assert.equal(result.usages[0].stableKey, 'tok-1|https://example.com/shared.jpg|img||BODY[-1]/IMG[0]');
+    assert.equal(result.usages[1].stableKey, 'tok-1|https://example.com/shared.jpg|img||BODY[-1]/IMG[1]');
+    // Observer revision passes through; the legacy generation stays intact.
+    assert.equal(result.watch.revision, 5);
+    assert.equal(result.watch.generation, 3);
+  });
+
+  it('falls back to generation and time origin without an observer revision', () => {
+    const result = scan(
+      { body: body(new FakeImage({ attributes: { src: '/a.jpg' } })), timeOrigin: 4321 },
+      {
+        watchKey: '__imageguide_test_watch_legacy',
+        watchState: { generation: 7, mutationCount: 0, lastMutationTime: 0 }
+      }
+    );
+
+    assert.equal(result.watch.revision, 7);
+    assert.equal(result.usages[0].documentToken, '4321');
+    assert.ok(result.usages[0].stableKey.startsWith('4321|https://example.com/a.jpg|img||'));
+  });
+
+  it('changes the weak identity when the element moves', () => {
+    const first = new FakeImage({ attributes: { src: '/move.jpg' } });
+    const second = new FakeImage({ attributes: { src: '/move.jpg' } });
+    const before = scan({ body: body(first, second) });
+    const keyOf = (result, element) => result.usages.find(
+      (usage) => usage.elementId === element.getAttribute(MARK_ATTRIBUTE)
+    ).stableKey;
+    const firstKeyBefore = keyOf(before, first);
+    assert.ok(firstKeyBefore.endsWith('BODY[-1]/IMG[0]'));
+    restore();
+
+    const after = scan({ body: body(second, first) });
+    const firstKeyAfter = keyOf(after, first);
+    // The same element sits at a new path, so continuity must revalidate.
+    assert.notEqual(firstKeyAfter, firstKeyBefore);
+    assert.ok(firstKeyAfter.endsWith('BODY[-1]/IMG[1]'));
+  });
 });
