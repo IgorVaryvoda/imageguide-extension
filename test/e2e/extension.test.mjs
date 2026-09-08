@@ -307,6 +307,42 @@ describe('ImageGuide extension in Chromium', { timeout: 120000 }, () => {
     assert.match(snapshot.body, /Browser LCP/);
     assert.match(snapshot.body, /Shift attribution/);
 
+    await audit.click('#export-press');
+    const pressPreview = await audit.$eval('#press-preview', (node) => ({
+      hidden: node.hidden,
+      scope: node.querySelector('#press-preview-scope').textContent,
+      redactions: node.querySelector('#press-preview-redactions').textContent,
+      files: node.querySelector('#press-preview-files').textContent
+    }));
+    assert.equal(pressPreview.hidden, false);
+    assert.match(pressPreview.scope, /Full audit scope/);
+    assert.match(pressPreview.redactions, /page-url-and-title-omitted/);
+    assert.match(pressPreview.files, /hero|icon/i);
+    const downloaded = await audit.evaluate(async () => {
+      const originalCreate = URL.createObjectURL;
+      const originalRevoke = URL.revokeObjectURL;
+      let blob;
+      URL.createObjectURL = (candidate) => {
+        blob = candidate;
+        return 'blob:press-export-test';
+      };
+      URL.revokeObjectURL = () => {};
+      document.getElementById('download-press').click();
+      const text = await blob.text();
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+      return {
+        name: document.querySelector('#download-press').textContent,
+        payload: JSON.parse(text)
+      };
+    });
+    assert.equal(downloaded.name, 'Download Press JSON');
+    assert.equal(downloaded.payload.schema, 1);
+    assert.equal(downloaded.payload.resources.length, snapshot.resources.length);
+    assert.ok(!JSON.stringify(downloaded.payload).includes('browser-grade'));
+    await audit.click('#close-press-preview');
+    assert.equal(await audit.$eval('#press-preview', (node) => node.hidden), true);
+
     const before = Number(/\d+/.exec(snapshot.resultCount)[0]);
     await target.evaluate(() => {
       const image = document.createElement('img');

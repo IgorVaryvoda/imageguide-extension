@@ -2,6 +2,7 @@ import { analyzePage, buildLimitationSummary, CHECKED_RESPONSE_NOTE, ISSUES } fr
 import { CONVERTER_URL } from '../lib/constants.js';
 import { humanBytes } from '../lib/format.js';
 import { validateHandoff } from '../lib/handoff.js';
+import { buildPressHandoff, pressHandoffFileName } from '../lib/press-export.js';
 import {
   applyMeasurementToResource,
   ATTEMPT_STATUS,
@@ -78,6 +79,13 @@ const elements = {
   measure: document.getElementById('measure'),
   copyJson: document.getElementById('copy-json'),
   copyReport: document.getElementById('copy-report'),
+  exportPress: document.getElementById('export-press'),
+  pressPreview: document.getElementById('press-preview'),
+  pressPreviewScope: document.getElementById('press-preview-scope'),
+  pressPreviewRedactions: document.getElementById('press-preview-redactions'),
+  pressPreviewFiles: document.getElementById('press-preview-files'),
+  downloadPress: document.getElementById('download-press'),
+  closePressPreview: document.getElementById('close-press-preview'),
   rescan: document.getElementById('rescan'),
   showPage: document.getElementById('show-page'),
   toggleWatch: document.getElementById('toggle-watch'),
@@ -91,6 +99,7 @@ const state = {
   watchKey: query.get('watch') || '',
   revision: '',
   documentToken: '',
+  observedAt: '',
   search: '',
   filter: 'all',
   sort: 'saving',
@@ -108,7 +117,8 @@ const state = {
   measureMessage: '',
   attemptedKeys: new Set(),
   handoffApplied: false,
-  handoffNotice: ''
+  handoffNotice: '',
+  pressExport: null
 };
 
 const make = (tag, className = '', text = '') => {
@@ -252,9 +262,12 @@ async function scan(silent = false) {
     state.watchKey = result.watchKey;
     state.revision = result.revision;
     state.documentToken = result.page?.documentToken || '';
+    state.observedAt = new Date().toISOString();
     await receiveHandoff();
     if (generation !== state.scanGeneration) return;
     state.report = analyzePage(state.page.resources, state.page.usages, state.page);
+    state.pressExport = null;
+    renderPressPreview(null);
     render();
     show('results');
     preparePermissionSnapshot();
@@ -575,6 +588,65 @@ function renderResources() {
     else if (focused) document.getElementById('result-count')?.setAttribute('tabindex', '-1');
   }
 }
+
+function renderPressPreview(exported) {
+  if (!exported) {
+    elements.pressPreview.hidden = true;
+    return;
+  }
+  const { preview } = exported;
+  const scope = preview.kind === 'full-audit'
+    ? `Full audit scope · ${preview.retainedResources} of ${preview.totalResources} resources`
+    : `Visible scope · ${preview.retainedResources} of ${preview.totalResources} resources · ` +
+      `${preview.filter === 'all' ? 'all findings' : label(preview.filter)}` +
+      (preview.searchApplied ? ' · search applied' : '');
+  elements.pressPreviewScope.textContent = `${scope}. The page URL, title, and page text are omitted.`;
+  elements.pressPreviewRedactions.textContent =
+    `Privacy redactions: ${preview.redactions.join(', ')}. ` +
+    `${preview.bytes.toLocaleString()} bytes in the bounded JSON file.`;
+  elements.pressPreviewFiles.replaceChildren();
+  if (preview.filenames.length) {
+    elements.pressPreviewFiles.append(make('li', 'press-preview-files-label', 'Retained filename hints'));
+    for (const filename of preview.filenames) {
+      elements.pressPreviewFiles.append(make('li', '', filename));
+    }
+  } else {
+    elements.pressPreviewFiles.append(
+      make('li', '', 'No filename hints retained (for example, inline data was omitted).')
+    );
+  }
+  elements.pressPreview.hidden = false;
+}
+
+function showPressPreview() {
+  try {
+    state.pressExport = buildPressHandoff(state.page, state.report, {
+      filter: state.filter,
+      search: state.search,
+      observed: state.observedAt
+    });
+    renderPressPreview(state.pressExport);
+    elements.pressPreview.scrollIntoView({ block: 'nearest' });
+  } catch (error) {
+    state.pressExport = null;
+    elements.pressPreview.hidden = false;
+    elements.pressPreviewScope.textContent = 'Press export is unavailable for this audit.';
+    elements.pressPreviewRedactions.textContent = String(error?.message || error);
+    elements.pressPreviewFiles.replaceChildren();
+  }
+}
+
+function downloadPressExport() {
+  if (!state.pressExport) return;
+  const blob = new Blob([state.pressExport.json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = pressHandoffFileName(state.page);
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 async function preparePermissionSnapshot() {
   const pending = pendingResponseChecks();
   state.lease = null;
@@ -638,6 +710,9 @@ async function checkResponseSizes() {
     });
     if (scanRun !== state.scanGeneration) return;
     applyCheckOutcome(job, pending, outcome);
+    if (outcome.outcome === 'measured' || (outcome.results || []).some(Boolean)) {
+      state.observedAt = new Date().toISOString();
+    }
     state.report = analyzePage(state.page.resources, state.page.usages, state.page);
     render();
   } catch {
@@ -772,10 +847,14 @@ async function poll() {
 
 elements.search.addEventListener('input', () => {
   state.search = elements.search.value;
+  state.pressExport = null;
+  renderPressPreview(null);
   renderResources();
 });
 elements.filter.addEventListener('change', () => {
   state.filter = elements.filter.value;
+  state.pressExport = null;
+  renderPressPreview(null);
   renderResources();
 });
 elements.sort.addEventListener('change', () => {
@@ -816,6 +895,12 @@ elements.copyJson.addEventListener('click', () =>
 elements.copyReport.addEventListener('click', () =>
   copyText(elements.copyReport, buildMarkdownReport(state.page, state.report))
 );
+elements.exportPress.addEventListener('click', showPressPreview);
+elements.downloadPress.addEventListener('click', downloadPressExport);
+elements.closePressPreview.addEventListener('click', () => {
+  state.pressExport = null;
+  renderPressPreview(null);
+});
 
 if (!Number.isInteger(tabId) || tabId <= 0) {
   elements.errorMessage.textContent = 'This audit has no target tab. Open it from the extension popup.';
