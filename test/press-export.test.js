@@ -69,6 +69,18 @@ describe('Press handoff export', () => {
     assert.ok(parsed.redactions.includes('source-urls-omitted'));
   });
 
+  it('does not use query or fragment text as a malformed URL filename hint', () => {
+    const exported = buildPressHandoff(
+      {},
+      report([resource('r1', 'https://cdn.test/bad%zz.jpg?token=SECRET#PRIVATE')]),
+      { observed: '2026-09-08T00:00:00.000Z' }
+    );
+    assert.deepEqual(exported.payload.resources[0].path_hints, ['bad_zz.jpg']);
+    assert.ok(exported.payload.redactions.includes('resource-1-filename-sanitized'));
+    assert.ok(!exported.json.includes('SECRET'));
+    assert.ok(!exported.json.includes('PRIVATE'));
+  });
+
   it('keeps visible scope and does not export the search text', () => {
     const exported = buildPressHandoff(
       {},
@@ -151,6 +163,9 @@ describe('Press handoff export', () => {
     const fixture = JSON.parse(await readFile(fixturePath, 'utf8'));
     assert.equal(fixture.schema, PRESS_HANDOFF_SCHEMA);
     assert.equal(fixture.producer, 'imageguide-extension');
+    assert.equal(fixture.producer_revision, 'press-export-1');
+    assert.equal(fixture.producer_version, '0.5.0');
+    assert.equal(fixture.report_schema, 4);
     assert.equal(fixture.resources.length, 2);
     assert.equal(fixture.resources[0].bytes_measured, true);
     assert.equal(fixture.resources[1].bytes_measured, false);

@@ -40,7 +40,11 @@ const resources = [
 const exported = buildPressHandoff(
   { pageUrl: 'https://fixture.test/private?secret=1', pageTitle: 'fixture-private-title' },
   { resources },
-  { observed: '2026-09-08T00:00:00.000Z' }
+  {
+    observed: '2026-09-08T00:00:00.000Z',
+    producerRevision: 'press-export-1',
+    producerVersion: '0.5.0'
+  }
 );
 const target = new URL('../test/fixtures/press-handoff.json', import.meta.url);
 await mkdir(new URL('.', target), { recursive: true });

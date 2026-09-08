@@ -2,7 +2,11 @@ import { analyzePage, buildLimitationSummary, CHECKED_RESPONSE_NOTE, ISSUES } fr
 import { CONVERTER_URL } from '../lib/constants.js';
 import { humanBytes } from '../lib/format.js';
 import { validateHandoff } from '../lib/handoff.js';
-import { buildPressHandoff, pressHandoffFileName } from '../lib/press-export.js';
+import {
+  buildPressHandoff,
+  pressHandoffFileName,
+  PRESS_EXPORT_REVISION
+} from '../lib/press-export.js';
 import {
   applyMeasurementToResource,
   ATTEMPT_STATUS,
@@ -623,10 +627,13 @@ function showPressPreview() {
     state.pressExport = buildPressHandoff(state.page, state.report, {
       filter: state.filter,
       search: state.search,
-      observed: state.observedAt
+      observed: state.observedAt,
+      producerRevision: PRESS_EXPORT_REVISION,
+      producerVersion: chrome.runtime.getManifest().version
     });
     renderPressPreview(state.pressExport);
     elements.pressPreview.scrollIntoView({ block: 'nearest' });
+    elements.downloadPress.focus();
   } catch (error) {
     state.pressExport = null;
     elements.pressPreview.hidden = false;
@@ -634,6 +641,12 @@ function showPressPreview() {
     elements.pressPreviewRedactions.textContent = String(error?.message || error);
     elements.pressPreviewFiles.replaceChildren();
   }
+}
+
+function closePressPreview() {
+  state.pressExport = null;
+  renderPressPreview(null);
+  elements.exportPress.focus();
 }
 
 function downloadPressExport() {
@@ -897,10 +910,7 @@ elements.copyReport.addEventListener('click', () =>
 );
 elements.exportPress.addEventListener('click', showPressPreview);
 elements.downloadPress.addEventListener('click', downloadPressExport);
-elements.closePressPreview.addEventListener('click', () => {
-  state.pressExport = null;
-  renderPressPreview(null);
-});
+elements.closePressPreview.addEventListener('click', closePressPreview);
 
 if (!Number.isInteger(tabId) || tabId <= 0) {
   elements.errorMessage.textContent = 'This audit has no target tab. Open it from the extension popup.';

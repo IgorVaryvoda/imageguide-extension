@@ -301,6 +301,7 @@ main {
 
 .press-preview {
   display: flex;
+  flex-wrap: wrap;
   align-items: end;
   justify-content: space-between;
   gap: 24px;
@@ -349,8 +350,24 @@ main {
 
 .press-preview-actions {
   display: flex;
+  flex-wrap: wrap;
   flex: 0 0 auto;
   gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .press-preview {
+    align-items: flex-start;
+  }
+
+  .press-preview-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .press-preview-actions .button {
+    width: 100%;
+  }
 }
 
 .toolbar {
