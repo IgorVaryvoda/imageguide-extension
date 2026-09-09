@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 
+import { pressFixtureText } from '../scripts/write-press-fixture.mjs';
 import {
   buildPressHandoff,
   PRESS_HANDOFF_SCHEMA,
@@ -81,6 +82,113 @@ describe('Press handoff export', () => {
     assert.ok(!exported.json.includes('PRIVATE'));
   });
 
+  it('keeps the real basename under a directory longer than the string limit', () => {
+    const directory = 'x'.repeat(PRESS_MAX_STRING_CHARS);
+    const exported = buildPressHandoff(
+      {},
+      report([resource('r1', `https://example.test/${directory}/real-photo.jpg`)]),
+      { observed: '2026-09-08T00:00:00.000Z' }
+    );
+    assert.deepEqual(exported.payload.resources[0].path_hints, ['real-photo.jpg']);
+    assert.ok(!exported.json.includes('x'.repeat(64)));
+    assert.ok(exported.payload.redactions.includes('directory-paths-omitted'));
+  });
+
+  it('omits a file name that cannot be kept intact instead of inventing one', () => {
+    const basename = `${'y'.repeat(PRESS_MAX_STRING_CHARS + 1)}.jpg`;
+    const exported = buildPressHandoff(
+      {},
+      report([resource('r1', `https://example.test/photos/${basename}`)]),
+      { observed: '2026-09-08T00:00:00.000Z' }
+    );
+    assert.deepEqual(exported.payload.resources[0].path_hints, []);
+    assert.ok(exported.payload.redactions.includes('resource-1-filename-too-long-omitted'));
+    assert.ok(!exported.json.includes('y'.repeat(64)));
+  });
+
+  it('carries format provenance for URL hints and unknown formats', () => {
+    const exported = buildPressHandoff({}, report([
+      resource('observed', 'https://cdn.test/observed.jpg', { formatProvenance: 'observed' }),
+      resource('hint', 'https://cdn.test/hint.jpg', { formatProvenance: 'hint' }),
+      resource('checked', 'https://cdn.test/checked.jpg', { formatProvenance: 'checked-header' }),
+      resource('unknown', 'https://cdn.test/unknown', {
+        format: 'unknown',
+        formatProvenance: 'unknown'
+      }),
+      resource('missing', 'https://cdn.test/missing.jpg', { formatProvenance: undefined })
+    ]), { observed: '2026-09-08T00:00:00.000Z' });
+    assert.deepEqual(
+      exported.payload.resources.map((item) => [
+        item.observed_format,
+        item.observed_format_provenance
+      ]),
+      [
+        ['jpeg', 'observed'],
+        ['jpeg', 'hint'],
+        ['jpeg', 'checked-header'],
+        ['unknown', 'unknown'],
+        ['jpeg', 'unknown']
+      ]
+    );
+    // Provenance stays advisory: it never becomes an allowed output format.
+    for (const item of exported.payload.resources) assert.deepEqual(item.formats, []);
+  });
+
+  it('reports the recorded scan limits without carrying page text', () => {
+    const exported = buildPressHandoff(
+      {
+        pageUrl: 'https://private.test/account',
+        pageTitle: 'Private customer name',
+        truncated: true,
+        scannedElements: 5000,
+        recordsTruncated: true,
+        skippedResources: 12,
+        skippedUsages: 7,
+        styleScanTruncated: true,
+        timingBufferFull: true,
+        frameCount: 3
+      },
+      report([resource('r1', 'https://cdn.test/hero.jpg')]),
+      { observed: '2026-09-08T00:00:00.000Z' }
+    );
+    const scope = exported.payload.scope;
+    assert.equal(scope.kind, 'full-audit');
+    // Exporter trimming and collector limits stay separate facts.
+    assert.equal(scope.resources_truncated, false);
+    assert.equal(scope.evidence_lower_bound, true);
+    assert.deepEqual(scope.evidence_limitations, [
+      { key: 'element-limit', lower_bound: true },
+      { key: 'record-limit', lower_bound: true },
+      { key: 'css-budget', lower_bound: true },
+      { key: 'timing-buffer', lower_bound: false },
+      { key: 'frames', lower_bound: false }
+    ]);
+    assert.deepEqual(exported.preview.limitations, [
+      'element-limit',
+      'record-limit',
+      'css-budget',
+      'timing-buffer',
+      'frames'
+    ]);
+    assert.equal(exported.preview.evidenceLowerBound, true);
+    // Only keys and flags travel; the limitation messages never do.
+    assert.ok(!exported.json.includes('Private customer name'));
+    assert.ok(!exported.json.includes('private.test'));
+    assert.ok(!exported.json.includes('element scan stopped early'));
+    assert.ok(!exported.json.includes('5000'));
+  });
+
+  it('leaves the scope complete when the scan hit no limits', () => {
+    const exported = buildPressHandoff(
+      { scannedElements: 12, frameCount: 1 },
+      report([resource('r1', 'https://cdn.test/hero.jpg')]),
+      { observed: '2026-09-08T00:00:00.000Z' }
+    );
+    assert.equal(exported.payload.scope.evidence_lower_bound, false);
+    assert.deepEqual(exported.payload.scope.evidence_limitations, []);
+    assert.deepEqual(exported.preview.limitations, []);
+  });
+
   it('keeps visible scope and does not export the search text', () => {
     const exported = buildPressHandoff(
       {},
@@ -96,7 +204,9 @@ describe('Press handoff export', () => {
       search_applied: true,
       total_resources: 2,
       retained_resources: 1,
-      resources_truncated: false
+      resources_truncated: false,
+      evidence_lower_bound: false,
+      evidence_limitations: []
     });
     assert.equal(exported.payload.resources.length, 1);
     assert.ok(!exported.json.includes('private-search-term'));
@@ -160,7 +270,11 @@ describe('Press handoff export', () => {
   });
 
   it('emits the checked shared fixture in the Rust consumer shape', async () => {
-    const fixture = JSON.parse(await readFile(fixturePath, 'utf8'));
+    const text = await readFile(fixturePath, 'utf8');
+    // Regenerate from the generator's own input so the checked-in file and the
+    // exporter cannot drift. The fixture on disk is never rewritten here.
+    assert.equal(text, pressFixtureText(), 'run npm run write-press-fixture');
+    const fixture = JSON.parse(text);
     assert.equal(fixture.schema, PRESS_HANDOFF_SCHEMA);
     assert.equal(fixture.producer, 'imageguide-extension');
     assert.equal(fixture.producer_revision, 'press-export-1');
@@ -170,6 +284,11 @@ describe('Press handoff export', () => {
     assert.equal(fixture.resources[0].bytes_measured, true);
     assert.equal(fixture.resources[1].bytes_measured, false);
     assert.ok(fixture.resources[0].findings.includes('usage:img:noAlt'));
-    assert.ok(!JSON.stringify(fixture).includes('fixture-private-title'));
+    assert.equal(fixture.resources[0].observed_format_provenance, 'observed');
+    assert.equal(fixture.resources[1].observed_format_provenance, 'hint');
+    assert.deepEqual(fixture.scope.evidence_limitations, []);
+    assert.equal(fixture.scope.evidence_lower_bound, false);
+    assert.ok(!text.includes('fixture-private-title'));
+    assert.ok(!text.includes('fixture-secret'));
   });
 });

@@ -600,11 +600,18 @@ function renderPressPreview(exported) {
   }
   const { preview } = exported;
   const scope = preview.kind === 'full-audit'
-    ? `Full audit scope · ${preview.retainedResources} of ${preview.totalResources} resources`
-    : `Visible scope · ${preview.retainedResources} of ${preview.totalResources} resources · ` +
+    ? `Full audit scope · ${preview.retainedResources} of ${preview.totalResources} recorded resources`
+    : `Visible scope · ${preview.retainedResources} of ${preview.totalResources} recorded resources · ` +
       `${preview.filter === 'all' ? 'all findings' : label(preview.filter)}` +
       (preview.searchApplied ? ' · search applied' : '');
-  elements.pressPreviewScope.textContent = `${scope}. The page URL, title, and page text are omitted.`;
+  // The scope counts what this audit recorded. Where the scan itself stopped
+  // early, say so here instead of letting the file read as full coverage.
+  const coverage = preview.limitations.length
+    ? ` Recorded evidence limits: ${preview.limitations.join(', ')}.` +
+      (preview.evidenceLowerBound ? ' Counts are a lower bound for the page.' : '')
+    : '';
+  elements.pressPreviewScope.textContent =
+    `${scope}. The page URL, title, and page text are omitted.${coverage}`;
   elements.pressPreviewRedactions.textContent =
     `Privacy redactions: ${preview.redactions.join(', ')}. ` +
     `${preview.bytes.toLocaleString()} bytes in the bounded JSON file.`;

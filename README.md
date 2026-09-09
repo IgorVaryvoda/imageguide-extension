@@ -145,6 +145,7 @@ lib/merge.js           Joins the frame results into one page (pure)
 lib/measure.js         Validates and bounds optional response-size checks
 lib/report.js          Sort, filter, Markdown, and JSON output (pure)
 lib/handoff.js         One-shot popup-to-audit payload contract (pure)
+lib/press-export.js    Bounded, redacted Press handoff file export (pure)
 content/collect.js     Runs in the page, gathers resources and every supported usage
 content/observe.js     Buffers LCP, layout shifts, and relevant page mutations
 content/highlight.js   Runs in the page, scrolls to and outlines one image
