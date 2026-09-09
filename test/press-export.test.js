@@ -94,6 +94,51 @@ describe('Press handoff export', () => {
     assert.ok(exported.payload.redactions.includes('directory-paths-omitted'));
   });
 
+  it('omits a percent-encoded path instead of exporting its directories', () => {
+    const exported = buildPressHandoff(
+      {},
+      report([resource('r1', 'https://cdn.test/private%2Fcustomer%2Fhero.jpg')]),
+      { observed: '2026-09-08T00:00:00.000Z' }
+    );
+    const record = exported.payload.resources[0];
+    assert.deepEqual(record.path_hints, []);
+    assert.deepEqual(exported.preview.filenames, []);
+    assert.ok(exported.payload.redactions.includes('resource-1-encoded-path-filename-omitted'));
+    // Neither the directory structure nor a file name the path never served.
+    assert.ok(!exported.json.includes('private'));
+    assert.ok(!exported.json.includes('customer'));
+    assert.ok(!exported.json.includes('hero.jpg'));
+  });
+
+  it('omits a percent-encoded backslash path the same way', () => {
+    const exported = buildPressHandoff(
+      {},
+      report([resource('r1', 'https://cdn.test/private%5Ccustomer%5Chero.jpg')]),
+      { observed: '2026-09-08T00:00:00.000Z' }
+    );
+    const record = exported.payload.resources[0];
+    assert.deepEqual(record.path_hints, []);
+    assert.deepEqual(exported.preview.filenames, []);
+    assert.ok(exported.payload.redactions.includes('resource-1-encoded-path-filename-omitted'));
+    assert.ok(!exported.json.includes('private'));
+    assert.ok(!exported.json.includes('customer'));
+    assert.ok(!exported.json.includes('hero.jpg'));
+  });
+
+  it('keeps a plain file name that only decodes to a safe name', () => {
+    const exported = buildPressHandoff(
+      {},
+      report([
+        resource('r1', 'https://cdn.test/hero%20photo.jpg'),
+        resource('r2', 'https://cdn.test/plain.jpg')
+      ]),
+      { observed: '2026-09-08T00:00:00.000Z' }
+    );
+    assert.deepEqual(exported.payload.resources[0].path_hints, ['hero photo.jpg']);
+    assert.deepEqual(exported.payload.resources[1].path_hints, ['plain.jpg']);
+    assert.ok(!exported.payload.redactions.some((key) => key.endsWith('encoded-path-filename-omitted')));
+  });
+
   it('omits a file name that cannot be kept intact instead of inventing one', () => {
     const basename = `${'y'.repeat(PRESS_MAX_STRING_CHARS + 1)}.jpg`;
     const exported = buildPressHandoff(
