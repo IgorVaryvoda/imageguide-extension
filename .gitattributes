@@ -1,0 +1,5 @@
+# The Press handoff fixture is a byte-exact contract shared with the Rust
+# consumer, and the unit test compares it byte for byte against the generator
+# output. Keep it LF on every platform so a Windows checkout cannot rewrite the
+# trailing newline to CRLF and break that comparison.
+test/fixtures/press-handoff.json text eol=lf

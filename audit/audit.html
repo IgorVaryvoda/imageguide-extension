@@ -110,6 +110,21 @@
             <button id="measure" class="button secondary" type="button">Check response sizes</button>
             <button id="copy-json" class="button secondary" type="button">Copy JSON</button>
             <button id="copy-report" class="button secondary" type="button">Copy Markdown</button>
+            <button id="export-press" class="button" type="button">Export for Press</button>
+          </div>
+        </section>
+
+        <section id="press-preview" class="press-preview" hidden aria-label="Press export privacy preview">
+          <div>
+            <p class="eyebrow">Press handoff</p>
+            <h2>Review before download</h2>
+            <p id="press-preview-scope"></p>
+            <p id="press-preview-redactions" class="press-preview-note"></p>
+            <ul id="press-preview-files" class="press-preview-files"></ul>
+          </div>
+          <div class="press-preview-actions">
+            <button id="download-press" class="button" type="button">Download Press JSON</button>
+            <button id="close-press-preview" class="button secondary" type="button">Close</button>
           </div>
         </section>
 

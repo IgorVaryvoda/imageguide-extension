@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { once } from 'node:events';
-import { dirname, extname, resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
+import { dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { after, afterEach, before, describe, it } from 'node:test';
 
@@ -28,6 +29,7 @@ let redirectServer;
 let baseUrl;
 let redirectBaseUrl;
 let imageBytes;
+let downloadDir;
 
 function listen(instance) {
   instance.listen(0, '127.0.0.1');
@@ -108,6 +110,32 @@ function endpointResponse(request, response) {
     return true;
   }
   return false;
+}
+
+async function until(check, message, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  while (Date.now() < deadline) {
+    const result = await check();
+    if (result) return result;
+    last = result;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+  }
+  throw new Error(`${message} (last value: ${JSON.stringify(last) ?? 'none'})`);
+}
+
+function activeElementId(page) {
+  return page.evaluate(() => document.activeElement?.id || '');
+}
+
+/** Tab through the real focus order until the wanted control has focus. */
+async function tabTo(page, id, maxPresses = 200) {
+  await page.bringToFront();
+  for (let press = 0; press < maxPresses; press += 1) {
+    if (await activeElementId(page) === id) return;
+    await page.keyboard.press('Tab');
+  }
+  throw new Error(`Tab order never reached #${id}; focus stopped at #${await activeElementId(page)}`);
 }
 
 async function waitForExtensionPage(pathname, timeoutMs = 15000) {
@@ -234,10 +262,13 @@ describe('ImageGuide extension in Chromium', { timeout: 120000 }, () => {
     await listen(server);
     baseUrl = `http://127.0.0.1:${server.address().port}`;
 
+    downloadDir = await mkdtemp(join(tmpdir(), 'imageguide-e2e-downloads-'));
     const launch = {
       headless: true,
       enableExtensions: [root],
       defaultViewport: { width: 1280, height: 800, deviceScaleFactor: 1 },
+      // Let the Press export reach the disk as a real browser download.
+      downloadBehavior: { policy: 'allow', downloadPath: downloadDir },
       args: process.env.CI && process.platform === 'linux' ? ['--no-sandbox'] : []
     };
     if (process.env.IMAGEGUIDE_CHROME_CHANNEL === 'chrome') launch.channel = 'chrome';
@@ -248,6 +279,7 @@ describe('ImageGuide extension in Chromium', { timeout: 120000 }, () => {
   after(async () => {
     await browser?.close();
     await Promise.all([close(server), close(redirectServer)]);
+    if (downloadDir) await rm(downloadDir, { recursive: true, force: true });
   });
 
   afterEach(async () => {
@@ -306,6 +338,81 @@ describe('ImageGuide extension in Chromium', { timeout: 120000 }, () => {
     assert.match(snapshot.body, /canvas element\(s\) were counted/);
     assert.match(snapshot.body, /Browser LCP/);
     assert.match(snapshot.body, /Shift attribution/);
+
+    // Export for Press by keyboard, at a normal and a narrow window, and let
+    // Chromium write the file to disk instead of intercepting the blob.
+    const downloadPath = join(downloadDir, 'imageguide-press-handoff.json');
+    for (const width of [1280, 390]) {
+      await audit.setViewport({ width, height: 800 });
+      const baseWidth = await audit.evaluate(() => document.documentElement.scrollWidth);
+      await tabTo(audit, 'export-press');
+      await audit.keyboard.press('Enter');
+      await audit.waitForSelector('#press-preview:not([hidden])', { timeout: 10000 });
+      assert.equal(
+        await activeElementId(audit),
+        'download-press',
+        `opening the Press preview at ${width}px must move focus to the download button`
+      );
+      const pressPreview = await audit.evaluate((base) => ({
+        scope: document.getElementById('press-preview-scope').textContent,
+        redactions: document.getElementById('press-preview-redactions').textContent,
+        files: document.getElementById('press-preview-files').textContent,
+        right: Math.ceil(document.getElementById('press-preview').getBoundingClientRect().right),
+        scroll: document.documentElement.scrollWidth,
+        viewport: window.innerWidth,
+        base
+      }), baseWidth);
+      assert.match(pressPreview.scope, /Full audit scope/);
+      assert.match(pressPreview.redactions, /page-url-and-title-omitted/);
+      assert.match(pressPreview.files, /hero|icon/i);
+      assert.ok(
+        pressPreview.right <= pressPreview.viewport + 1,
+        `Press preview overflows at ${width}px: ${JSON.stringify(pressPreview)}`
+      );
+      assert.ok(
+        pressPreview.scroll <= Math.max(pressPreview.base, pressPreview.viewport) + 1,
+        `Press preview widened the page at ${width}px: ${JSON.stringify(pressPreview)}`
+      );
+
+      if (width === 1280) {
+        await audit.keyboard.press('Enter');
+        const text = await until(
+          async () => {
+            const bytes = await readFile(downloadPath, 'utf8').catch(() => '');
+            if (!bytes) return '';
+            try {
+              JSON.parse(bytes);
+            } catch {
+              return '';
+            }
+            return bytes;
+          },
+          `Chromium never wrote a complete ${downloadPath}`
+        );
+        const payload = JSON.parse(text);
+        assert.equal(payload.schema, 1);
+        assert.equal(payload.resources.length, snapshot.resources.length);
+        assert.ok(payload.resources.some((item) => item.path_hints.some(
+          (hint) => /^icon\d+\.png$/.test(hint)
+        )), `downloaded file kept no file-name hint: ${text.slice(0, 200)}`);
+        // The page identity, its query strings, and its host stay out of the file.
+        assert.ok(!text.includes('browser-grade'));
+        assert.ok(!text.includes('127.0.0.1'));
+        assert.ok(!text.includes('shared=1'));
+        assert.ok(!text.includes('fixture_session'));
+      }
+
+      await audit.keyboard.press('Tab');
+      assert.equal(await activeElementId(audit), 'close-press-preview');
+      await audit.keyboard.press('Enter');
+      assert.equal(await audit.$eval('#press-preview', (node) => node.hidden), true);
+      assert.equal(
+        await activeElementId(audit),
+        'export-press',
+        `closing the Press preview at ${width}px must return focus to the export button`
+      );
+    }
+    await audit.setViewport({ width: 1280, height: 800 });
 
     const before = Number(/\d+/.exec(snapshot.resultCount)[0]);
     await target.evaluate(() => {

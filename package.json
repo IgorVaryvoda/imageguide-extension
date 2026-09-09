@@ -11,9 +11,10 @@
   },
   "scripts": {
     "lint": "eslint .",
-    "test": "node scripts/verify.mjs && npm run lint && node --test test/measure.test.js test/collect.test.js test/merge.test.js test/observe.test.js test/extension-measure.test.js test/report.test.js test/analyze.test.js test/handoff.test.js",
+    "test": "node scripts/verify.mjs && npm run lint && node --test test/measure.test.js test/collect.test.js test/merge.test.js test/observe.test.js test/extension-measure.test.js test/report.test.js test/analyze.test.js test/handoff.test.js test/press-export.test.js",
     "test:e2e": "node --test test/e2e/extension.test.mjs",
     "verify": "node scripts/verify.mjs",
+    "write-press-fixture": "node scripts/write-press-fixture.mjs",
     "assets": "bash scripts/make-assets.sh",
     "screens": "node scripts/capture-screens.mjs",
     "screenshots": "node scripts/make-store-screenshots.mjs",

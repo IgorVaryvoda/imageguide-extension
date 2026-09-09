@@ -299,6 +299,77 @@ main {
   font-size: 12px;
 }
 
+.press-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  margin: -20px 0 34px;
+  padding: 18px 20px;
+  border: 1px solid #c4b5fd;
+  border-radius: 10px;
+  background: var(--violet-soft);
+}
+
+.press-preview h2 {
+  font-size: 18px;
+}
+
+.press-preview p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.press-preview-note {
+  max-width: 900px;
+}
+
+.press-preview-files {
+  max-width: 900px;
+  max-height: 140px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+  overflow: auto;
+  color: var(--muted);
+  font: 12px/1.5 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.press-preview-files-label {
+  margin-left: -18px;
+  color: var(--muted);
+  font-family: inherit;
+  list-style: none;
+}
+
+.press-preview-files li {
+  margin: 2px 0;
+}
+
+.press-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .press-preview {
+    align-items: flex-start;
+  }
+
+  .press-preview-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .press-preview-actions .button {
+    width: 100%;
+  }
+}
+
 .toolbar {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) 220px 190px auto;
